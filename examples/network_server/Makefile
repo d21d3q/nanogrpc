@@ -1,6 +1,7 @@
 # Include the nanopb provided Makefile rules
 # Path to the nanopb root directory
-NANOPB_DIR := $(abspath ../../../)
+NANOPB_DIR := $(abspath ../../nanopb)
+NANOGRPC_DIR := $(abspath ../../)
 
 # Files for the nanopb core
 NANOPB_CORE = $(NANOPB_DIR)/pb_encode.c $(NANOPB_DIR)/pb_decode.c $(NANOPB_DIR)/pb_common.c
@@ -31,7 +32,6 @@ endif
 
 BUILD_DIR = $(abspath .)
 
-NANOGRPC_DIR := $(NANOPB_DIR)/nanogrpc
 NANOGRPC_CORE = $(NANOGRPC_DIR)/ng_server.c
 # Compiler flags to enable all warnings & debug info
 CFLAGS = -ansi -Wall -Werror -g -O0
@@ -68,7 +68,7 @@ all: server client
 
 %.ng.c %.ng.h: %.proto $(wildcard %.options)
 	cd $(dir $(abspath $<)) && \
-	$(PROTOC) --plugin=$(NANOPB_DIR)/generator/protoc-gen-grpc $(PROTOC_INC) --grpc_out=$(BUILD_DIR) $<
+	$(PROTOC) --plugin=$(NANOGRPC_DIR)/generator/protoc-gen-grpc $(PROTOC_INC) --grpc_out=$(BUILD_DIR) $<
 
 # Override rule for building .pb.c and .pb.h
 %.pb.c %.pb.h: %.proto $(wildcard %.options)

@@ -87,6 +87,7 @@ To be discussed.
 * tests
 * more examples
 * some client side implementations in python, c++, and node-red
+* gateway
 
 ### about nanogrpc.proto
 Inside of this file you can notice that messages are duplicated with `_CS`
