@@ -1,13 +1,13 @@
 # About
 this is grpc implementaiton which aims communication over serial interfaces
-like UART or RS232.
+like UART, RS232, RS485.
 
 Instead of
 [standard HTTP protocol](https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md)
 it wraps request and response into `protobuf` messages which definition can be
 found in `nanogrpc.proto` file.
 
-This implementation is not going to provide server functionality. User needs to
+This implementation is not going to provide transport layer. User needs to
 implement it separately and provide `istream` and `ostream` to `ng_GrpcParse`
 function which decodes `GrpcRequest`, looks for specific method, decodes it
 with call callback (specified by user), and encodes everything back to ostream.
@@ -17,8 +17,9 @@ For now I am encoding data into frames base64 encoded wrapped in `>` `<`
 >TGlrZSB0aGlz<
 ```
 But it can be eaistly integrated for example with
-[HLDC](https://en.wikipedia.org/wiki/High-Level_Data_Link_Control) (which is my
-goal)
+[HLDC](https://en.wikipedia.org/wiki/High-Level_Data_Link_Control).
+Synchronous usage can be implemented over 
+[modbus](https://en.wikipedia.org/wiki/Modbus) using other command (0x43)
 
 ## Path to methods
 GRPC identifies methods by paths, which are basically strings.
@@ -84,9 +85,12 @@ will be tricky to remove it an NULL all pointers pointing to it...
 To be discussed. 
 
 ## Roadmap
-* tests
-* more examples
-* some client side implementations in python, c++, and node-red
+* organize tests for new project structure
+* switch to latest nanpb version
+* add more examples
+* add client c implemntation
+* some client side implementations in python, c++, and node-red or
+universal gateway
 * gateway
 
 ### about nanogrpc.proto
