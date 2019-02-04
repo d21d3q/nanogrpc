@@ -4,4 +4,4 @@ This example is adaptation of original example to work with nanogrpc.
 Currently only server code is implemented. Client side encoding is
 being done manually.
 
-**Usage same as in original example**
+Usage same as in [original example](https://github.com/nanopb/nanopb/tree/master/examples/network_server)
