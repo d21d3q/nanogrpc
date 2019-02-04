@@ -1,6 +1,8 @@
 # About
 this is grpc implementaiton which aims communication over serial interfaces
 like UART, RS232, RS485.
+Think about it as equivalent of
+[Firmata](https://www.arduino.cc/en/Reference/Firmata).
 
 Instead of
 [standard HTTP protocol](https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md)
@@ -89,6 +91,7 @@ To be discussed.
 * switch to latest nanpb version
 * add more examples
 * add client c implemntation
+* add Arduino examples
 * some client side implementations in python, c++, and node-red or
 universal gateway
 * gateway
