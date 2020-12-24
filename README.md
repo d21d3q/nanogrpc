@@ -1,3 +1,22 @@
+# Project status
+At this moment project is abandoned. As written before, I had vision to make it equivalent
+of [Firmata](https://www.arduino.cc/en/Reference/Firmata) but on steroids, to be able to talk
+to embedded devices in very elastic way. So that one could interface embedded device
+in complex way over serial interface without writing system driver (which could be neded
+for advanced tasks). Think about being able to control multiple sensors on single sensor bus,
+where you can configure ADC externally, make ADC readout as RPC, or even start streatming
+response as continous series of readouts.  
+So that synchronous server is kind of implemented as POC, but question is what would be use
+case for client code, would it be enough to make client version as nanogrpc and keep it 
+only for communication between embedded devices? Maybe write some gateway code so that 
+you could talk to embedded device from "original" grpc?  
+If anyone is interested it this library, [tll me](https://github.com/d21d3q/nanogrpc/issues/3)
+at would be your use case, why and where woul ou need it, 
+I think that this library has some potential and maybe one day I'll return to it.  
+Or if you want take over the project feel free to contact me. 
+
+---
+
 # About
 this is grpc implementaiton which aims communication over serial interfaces
 like UART, RS232, RS485.
