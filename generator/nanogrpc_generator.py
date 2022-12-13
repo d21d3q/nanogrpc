@@ -1991,18 +1991,6 @@ class ProtoFile:
                         if field.pbtype == 'ENUM' and field.ctype == enum.names:
                             field.pbtype = 'UENUM'
 
-    def get_all_used_messages(self):
-        methods = set()
-        if self.services:
-            for service in self.services:
-                if service.methods:
-                    for m in service.methods:
-                        print(m.input)
-                        #methods.add(m.input)
-                        #methods.add(m.output)
-                        #print(m.output)
-        return methods
-
     def generate_header(self, includes, headername, options):
         '''Generate content for a header file.
         Generates strings, which should be concatenated and stored to file.
