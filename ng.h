@@ -85,10 +85,10 @@ struct ng_method_s {
     /* void* request_holder; */
     ng_methodContext_t* context;
     const void* request_fields;
-    void (*request_fillWithZeros)(void *ptr);
+    //void (*request_fillWithZeros)(void *ptr);
     /* void *response_holder; */
     const void * response_fields;
-    void (*response_fillWithZeros)(void *ptr);
+    //void (*response_fillWithZeros)(void *ptr);
     const bool server_streaming;
     const bool client_streaming;
     ng_callback_t cleanup;

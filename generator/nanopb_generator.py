@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # kate: replace-tabs on; indent-width 4;
 
 from __future__ import unicode_literals
@@ -1620,130 +1620,8 @@ class Message(ProtoElement):
 
 
 # ---------------------------------------------------------------------------
-#                   Generation of Methods
-# ---------------------------------------------------------------------------
-
-class Method:
-    def __init__(self, names, desc, method_options):
-        self.full_name = names
-        self.name = desc.name
-        self.input = None
-        self.output = None
-
-        self.server_streaming = desc.server_streaming
-        self.client_streaming = desc.client_streaming
-
-        if hasattr(desc, 'input_type'):
-            self.input = names_from_type_name(desc.input_type)
-        else:
-            sys.stderr.write('''
-                 *************************************************************
-                 ***  Method without argument not supported yet            ***
-                 *************************************************************
-            ''' + '\n')
-            raise
-
-        if hasattr(desc, 'output_type'):
-            self.output = names_from_type_name(desc.output_type)
-        else:
-            sys.stderr.write('''
-                 *************************************************************
-                 ***  Method without response not supported yet            ***
-                 *************************************************************
-            ''' + '\n')
-            raise
-
-        # print('new method named: {}, input: {}, output: {}'.format(self.name,
-        #                                                         self.input,
-        #                                                         self.output))
-
-    def get_declaration(self):
-        result = 'extern ng_method_t {}_method;'.format(self.full_name)
-        return result
-
-    def get_definition(self):
-        result = ''
-        # result += 'DEFINE_FILL_WITH_ZEROS_FUNCTION({})\n'.format(self.input)
-        # result += 'DEFINE_FILL_WITH_ZEROS_FUNCTION({})\n'.format(self.output)
-        # result += '\n'
-        result += 'ng_method_t {}_method = {{\n'.format(self.full_name)
-        result += '    "{}",\n'.format(self.name)           # name
-        result += '    0,\n'  # TODO place method id option here # hasg
-        # result += '    NULL,\n'                           # handler
-        result += '    NULL,\n'                             # callback
-        # result += '    NULL,\n'                             # request_holder
-        result += '    NULL,\n'                             # context
-        result += '    {}_fields,\n'.format(self.input)     # request_fields
-        #result += '    &FILL_WITH_ZEROS_FUNCTION_NAME({}),\n'.format(self.input) # request_fillWithZeros
-        # result += '    NULL,\n'                             # response_holder
-        result += '    {}_fields,\n'.format(self.output)    # response_fields
-        #result += '    &FILL_WITH_ZEROS_FUNCTION_NAME({}),\n'.format(self.output) # response_fillWithZeros
-
-        if self.server_streaming:
-            result += '    true,\n'
-        else:
-            result += '    false,\n'
-
-        if self.client_streaming:
-            result += '    true,\n'
-        else:
-            result += '    false,\n'
-
-        result += '    {NULL, NULL},\n'                     # cleanup
-        result += '    NULL,\n'                             # next
-        result += '};'
-        return result
-
-# ---------------------------------------------------------------------------
-#                   Generation of Services
-# ---------------------------------------------------------------------------
-
-class Service:
-    def __init__(self, names, desc, service_options):
-        self.name = names
-        self.methods = []
-
-        for name, method in iterate_methods(desc):
-            self.methods.append(Method('_'.join([self.name, name]), method, method_options=None))
-
-    def get_declaration(self):
-        result = 'extern ng_service_t {}_service;'.format(self.name)
-        return result
-
-    def get_definition(self):
-        result =  'ng_service_t {}_service = {{\n'.format(self.name)
-        result += '    "{}",\n'.format(self.name)
-        result += '    0,\n'
-        result += '    NULL,\n'
-        result += '};'
-        return result
-
-    def get_methods(self):
-        return self.methods
-
-# ---------------------------------------------------------------------------
 #                    Processing of entire .proto files
 # ---------------------------------------------------------------------------
-
-def iterate_services(desc, flatten = False, names = Names()):
-    '''Recursively find all services.
-    for each, yield name, ServiceDescriptorProto
-    '''
-    for service in desc.service:
-        sub_name = service.name
-        if flatten:
-            yield Names(sub_name), service
-        else:
-            yield sub_name, service
-
-def iterate_methods(desc, flatten = False, names = Names()):
-    if hasattr(desc, 'method'):
-        for method in desc.method:
-            sub_name = method.name
-            if flatten:
-                yield Names(sub_name), method
-            else:
-                yield sub_name, method
 
 def iterate_messages(desc, flatten = False, names = Names(), comment_path = ()):
     '''Recursively find all messages. For each, yield name, DescriptorProto, comment_path.'''
@@ -1912,7 +1790,6 @@ class ProtoFile:
     def parse(self):
         self.enums = []
         self.messages = []
-        self.services = []
         self.extensions = []
         self.manglenames = MangleNames(self.fdesc, self.file_options)
 
@@ -1929,9 +1806,6 @@ class ProtoFile:
             enum_options = get_nanopb_suboptions(enum, self.file_options, name)
             enum_path = (ProtoElement.ENUM, index)
             self.enums.append(Enum(name, enum, enum_options, enum_path, self.comment_locations))
-
-        for names, service in iterate_services(self.fdesc, self.manglenames.flatten):
-            self.services.append(Service(names, service, service_options=None))
 
         for names, message, comment_path in iterate_messages(self.fdesc, self.manglenames.flatten):
             name = self.manglenames.create_name(names)
@@ -1990,18 +1864,6 @@ class ProtoFile:
                     for field in message.all_fields():
                         if field.pbtype == 'ENUM' and field.ctype == enum.names:
                             field.pbtype = 'UENUM'
-
-    def get_all_used_messages(self):
-        methods = set()
-        if self.services:
-            for service in self.services:
-                if service.methods:
-                    for m in service.methods:
-                        print(m.input)
-                        #methods.add(m.input)
-                        #methods.add(m.output)
-                        #print(m.output)
-        return methods
 
     def generate_header(self, includes, headername, options):
         '''Generate content for a header file.
@@ -2193,16 +2055,6 @@ class ProtoFile:
                 yield '#define %s %s\n' % (longname, shortname)
             yield '\n'
 
-        if self.services:
-            yield '/* Services definitions */\n'
-            for service in self.services:
-                yield service.get_declaration()
-                yield '\n'
-                for method in service.get_methods():
-                    yield method.get_declaration()
-                    yield '\n'
-                yield 'ng_GrpcStatus_t {}_service_init();\n'.format(service.name)
-
         yield '#ifdef __cplusplus\n'
         yield '} /* extern "C" */\n'
         yield '#endif\n'
@@ -2299,39 +2151,6 @@ class ProtoFile:
             yield '#endif\n'
 
         yield '\n'
-
-        if self.services:
-            yield '#ifdef NG_USE_DEFAULT_CONTEXT\n'
-            yield '\n'
-            for service in self.services:
-                for method in service.methods:
-                    yield '{} {}_DefaultRequest;\n'.format(method.input, method.full_name)
-                    yield '{} {}_DefaultResponse;\n'.format(method.output, method.full_name)
-                    yield 'ng_methodContext_t {}_DefaultContext;\n'.format(method.full_name)
-                    yield '\n'
-            yield '#endif\n'
-
-            yield '\n'
-
-            for service in self.services:
-                yield service.get_definition()
-                yield '\n\n'
-                for method in service.get_methods():
-                    yield method.get_definition()
-                    yield '\n\n'
-                yield '\n'
-                yield 'ng_GrpcStatus_t {}_service_init(){{\n'.format(service.name)
-                for method in service.methods:
-                    yield '    ng_addMethodToService(&{}_service, &{}_method);\n'.format(service.name, method.full_name)
-
-                yield '#ifdef NG_USE_DEFAULT_CONTEXT\n'
-                for method in service.methods:
-                    yield '    {}_DefaultContext.request = (void*)&{}_DefaultRequest;\n'.format(method.full_name, method.full_name)
-                    yield '    {}_DefaultContext.response = (void*)&{}_DefaultResponse;\n'.format(method.full_name, method.full_name)
-                    yield '    ng_setMethodContext(&{}_method, &{}_DefaultContext);\n'.format(method.full_name, method.full_name)
-                yield '#endif\n'
-                yield '    return 0;\n'
-                yield '}\n'
 
         if Globals.protoc_insertion_points:
             yield '/* @@protoc_insertion_point(eof) */\n'

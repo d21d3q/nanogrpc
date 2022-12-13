@@ -2,22 +2,22 @@
 //
 // See also the nanopb-specific options in fileproto.options.
 
-syntax = "proto2";
+syntax = "proto3";
 
 service FileServer {
   rpc ListFiles (Path) returns (FileList);
 }
 
 message Path {
-    optional string path = 1 [default = "/"];
+    optional string path = 1;
 }
 
 message FileInfo {
-    required uint64 inode = 1;
-    required string name = 2;
+    uint64 inode = 1;
+    string name = 2;
 }
 
 message FileList {
-    optional bool path_error = 1 [default = false];
+    optional bool path_error = 1;
     repeated FileInfo file = 2;
 }

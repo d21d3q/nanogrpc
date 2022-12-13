@@ -9,5 +9,5 @@
 # On the other hand, using the callback interface, it is not necessary
 # to set a limit on the number of files in the response.
 
-Path.path 	max_size:128
+Path.path 	        max_size:128
 FileInfo.name 		max_size:128
