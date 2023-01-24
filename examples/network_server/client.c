@@ -22,7 +22,6 @@
 #include <pb.h>
 
 #include "fileproto.pb.h"
-#include "fileproto.ng.h"
 #include "ng.h"
 #include "common.h"
 
@@ -108,7 +107,6 @@ bool listdir(int fd, char *path)
     /* Construct and send the request to server */
     {
         pb_ostream_t output = pb_ostream_from_socket(fd);
-        uint8_t zero = 0;
 
         /* In our protocol, path is optional. If it is not given,
          * the server will list the root directory. */
@@ -148,14 +146,11 @@ bool listdir(int fd, char *path)
 
         /* Encode the request. It is written to the socket immediately
          * through our custom stream. */
-        if (!pb_encode(&output, GrpcRequest_CS_fields, &gRequest))
+        if (!pb_encode_ex(&output, GrpcRequest_CS_fields, &gRequest, PB_ENCODE_NULLTERMINATED))
         {
             fprintf(stderr, "Encoding failed: %s\n", PB_GET_ERROR(&output));
             return false;
         }
-
-        /* We signal the end of request with a 0 tag. */
-        pb_write(&output, &zero, 1);
     }
 
     /* Read back the response from server */
@@ -165,7 +160,7 @@ bool listdir(int fd, char *path)
         /* Give a pointer to our callback function, which will handle the
          * filenames as they arrive. */
 
-        if (!pb_decode(&istream, GrpcResponse_CS_fields, &gResponse))
+        if (!pb_decode_ex(&istream, GrpcResponse_CS_fields, &gResponse, PB_DECODE_NULLTERMINATED))
         {
             fprintf(stderr, "Decode failed: %s\n", PB_GET_ERROR(&istream));
             return false;
@@ -175,6 +170,7 @@ bool listdir(int fd, char *path)
 
         if (gResponse.data == NULL){
           fprintf(stderr, "no data\n");
+          /*fprintf(stderr, "status: %d", gResponse.grpc_status);*/
           pb_release(GrpcResponse_CS_fields, &gResponse);
           return false;
         }

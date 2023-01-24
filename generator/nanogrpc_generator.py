@@ -1663,9 +1663,9 @@ class Method:
 
     def get_definition(self):
         result = ''
-        # result += 'DEFINE_FILL_WITH_ZEROS_FUNCTION({})\n'.format(self.input)
-        # result += 'DEFINE_FILL_WITH_ZEROS_FUNCTION({})\n'.format(self.output)
-        # result += '\n'
+        result += 'DEFINE_FILL_WITH_ZEROS_FUNCTION({})\n'.format(self.input)
+        result += 'DEFINE_FILL_WITH_ZEROS_FUNCTION({})\n'.format(self.output)
+        result += '\n'
         result += 'ng_method_t {}_method = {{\n'.format(self.full_name)
         result += '    "{}",\n'.format(self.name)           # name
         result += '    0,\n'  # TODO place method id option here # hasg
@@ -1674,10 +1674,10 @@ class Method:
         # result += '    NULL,\n'                             # request_holder
         result += '    NULL,\n'                             # context
         result += '    {}_fields,\n'.format(self.input)     # request_fields
-        #result += '    &FILL_WITH_ZEROS_FUNCTION_NAME({}),\n'.format(self.input) # request_fillWithZeros
+        result += '    &FILL_WITH_ZEROS_FUNCTION_NAME({}),\n'.format(self.input) # request_fillWithZeros
         # result += '    NULL,\n'                             # response_holder
         result += '    {}_fields,\n'.format(self.output)    # response_fields
-        #result += '    &FILL_WITH_ZEROS_FUNCTION_NAME({}),\n'.format(self.output) # response_fillWithZeros
+        result += '    &FILL_WITH_ZEROS_FUNCTION_NAME({}),\n'.format(self.output) # response_fillWithZeros
 
         if self.server_streaming:
             result += '    true,\n'
@@ -2016,6 +2016,14 @@ class ProtoFile:
             # no %s specified - use whatever was passed in as options.libformat
             yield options.libformat
         yield '\n'
+
+        if self.services:
+            try:
+                yield options.libformat % ('ng_server.h')
+            except TypeError:
+                # no %s specified - use whatever was passed in as options.libformat
+                yield options.libformat
+            yield '\n'
 
         for incfile in self.file_options.include:
             # allow including system headers

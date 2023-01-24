@@ -1,0 +1,17 @@
+{
+  "files.associations": {
+    "*.c": "c",
+    "ng.h": "c",
+    "nanogrpc.pb.h": "c"
+  },
+  "makefile.makefilePath": "examples/network_server/Makefile",
+  "makefile.configurations": [{
+    "name": "Debug",
+    "makeDirectory": "examples/network_server",
+    "makefilePath": "examples/network_server/Makefile"
+  }],
+  "makefile.launchConfigurations": [{
+    "cwd": "examples/network_server",
+    "binaryPath": "${workspaceFolder}/examples/network_server/server"
+  }]
+}

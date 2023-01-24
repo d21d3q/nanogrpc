@@ -20,8 +20,8 @@
 #include <pb_encode.h>
 #include <pb_decode.h>
 
+#include "ng_server.h"
 #include "fileproto.pb.h"
-#include "fileproto.ng.h"
 #include "common.h"
 
 ng_grpc_handle_t hGrpc;
@@ -41,11 +41,12 @@ bool listdir_callback(pb_ostream_t *stream, const pb_field_t *field, void * cons
     /* DIR *dir = (DIR*) *arg; */
     char * path = (char *)*arg;
     DIR *dir = NULL;
+    printf("list dir callback! opendir");
     dir = opendir(path);
     struct dirent *file;
     FileInfo fileinfo = {};
     if (dir != NULL){
-      /* printf("list dir callback! dir: %d\n", (uint32_t)(uint64_t)readdir(dir)); */
+      printf("list dir callback! dir: %d\n", (uint32_t)(uint64_t)readdir(dir));
       while ((file = readdir(dir)) != NULL)
       {
           /* printf("file: %s\n", file->d_name); */
@@ -75,8 +76,8 @@ ng_CallbackStatus_t FileServer_service_methodCallback(ng_methodContext_t* ctx){
     Path * request = (Path*)ctx->request;
     FileList * response = (FileList*)ctx->response;
     DIR *directory = NULL;
+    printf("Opening directory: %s directory %d\n", request->path, (uint32_t)(uint64_t)directory);
     directory = opendir(request->path);
-    /* printf("Listing directory: %s directory %d\n", request->path, (uint32_t)(uint64_t)directory); */
 
     if (directory == NULL)
     {

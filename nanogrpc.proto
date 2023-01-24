@@ -1,10 +1,10 @@
-syntax = "proto2";
+syntax = "proto3";
 
 
 // import 'nanopb.proto';
 
 message GrpcRequest {
-  required int32 call_id = 1;
+  int32 call_id = 1;
   // This would be ideal to have oneof here,
   // but since callback inside oneof is not supported
   // I am leaving strign path as optional
@@ -12,9 +12,9 @@ message GrpcRequest {
   //   int32 path_crc = 1;
   //   string path = 2 [(nanopb).max_size = 8];
   // }
-  required int32 path_hash = 2;
-  optional string path = 3;
-  required bytes data = 10;
+  int32 path_hash = 2;
+  string path = 3;
+  bytes data = 10;
 }
 
 enum GrpcStatus {
@@ -53,18 +53,18 @@ enum GrpcResponseType {
 }
 
 message GrpcResponse {
-  required int32 call_id = 1;
-  required GrpcStatus grpc_status = 2;
-  optional string grpc_mesage = 3;
-  optional GrpcResponseType response_type = 4;
-  optional bytes data = 10;
+  int32 call_id = 1;
+  GrpcStatus grpc_status = 2;
+  string grpc_mesage = 3;
+  GrpcResponseType response_type = 4;
+  bytes data = 10;
 }
 
 // Following messages are for client side implementation
 // they differ from only in options
 
 message GrpcRequest_CS {
-    required int32 call_id = 1;
+    int32 call_id = 1;
     // This would be ideal to have oneof here,
     // but since callback inside oneof is not supported
     // I am leaving strign path as optional
@@ -72,15 +72,15 @@ message GrpcRequest_CS {
     //   int32 path_crc = 1;
     //   string path = 2 [(nanopb).max_size = 8];
     // }
-    required int32 path_hash = 2;
-    optional string path = 3;
-    required bytes data = 10;
+    int32 path_hash = 2;
+    string path = 3;
+    bytes data = 10;
 }
 
 message GrpcResponse_CS {
-  required int32 call_id = 1;
-  required GrpcStatus grpc_status = 2;
-  optional string grpc_mesage = 3;
-  optional GrpcResponseType response_type = 4;
-  optional bytes data = 10;
+  int32 call_id = 1;
+  GrpcStatus grpc_status = 2;
+  string grpc_mesage = 3;
+  GrpcResponseType response_type = 4;
+  bytes data = 10;
 }

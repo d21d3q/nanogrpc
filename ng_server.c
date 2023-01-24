@@ -60,6 +60,7 @@ static ng_method_t * getMethodByHash(ng_grpc_handle_t *handle, ng_hash_t hash){
   while (service != NULL){ /* Iterate over services */
     method = service->method;
     while (method != NULL){ /* Iterate over methods in service */
+      printf("checking method %u versus hash %u", method->nameHash, hash);
       if (method->nameHash == hash){
         return method;
       } else {
@@ -204,7 +205,7 @@ bool ng_GrpcParseBlocking(ng_grpc_handle_t *handle){
         ctx = method->context;
         ctx->method = method;
         method->request_fillWithZeros(ctx->request);
-        if (pb_decode(&input, method->request_fields, ctx->request)){
+        if (pb_decode_ex(&input, method->request_fields, ctx->request, PB_DECODE_NULLTERMINATED)){
           method->response_fillWithZeros(ctx->response);
           status = method->callback(ctx);
 
@@ -245,6 +246,7 @@ bool ng_GrpcParseBlocking(ng_grpc_handle_t *handle){
   } else { /* Unable to decode GrpcRequest */
 	  /* unable to pase GrpcRequest */
     /* return fasle // TODO ? */
+    printf("%lu, %s \n", handle->input->bytes_left, handle->input->errmsg);
     handle->response.call_id = 0;
     handle->response.grpc_status = GrpcStatus_DATA_LOSS;
   }
@@ -521,7 +523,7 @@ bool ng_GrpcParseNonBlocking(ng_grpc_handle_t* handle){
                   * encode method request? */
                 }
                 if (status == CallbackStatus_Ok || method->server_streaming == false){
-                  handle->response.has_response_type = true;
+                  /* handle->response.has_response_type = true; */
                   handle->response.response_type = GrpcResponseType_END_OF_CALL;
                   ng_removeCall(handle, call_id);
                 }
@@ -645,10 +647,10 @@ bool ng_AsyncResponse(ng_grpc_handle_t *handle, ng_methodContext_t* ctx, bool en
           handle->response.data.funcs.encode = &encodeResponseCallback;
           handle->response.data.arg = ctx;
           if (endOfCall || ctx->method->server_streaming == false){
-            handle->response.has_response_type = true;
+            /* handle->response.has_response_type = true; */
             handle->response.response_type = GrpcResponseType_END_OF_CALL;
           } else {
-            handle->response.has_response_type = true;
+            /* handle->response.has_response_type = true; */
             handle->response.response_type = GrpcResponseType_STREAM;
           }
 
@@ -708,7 +710,7 @@ bool ng_endOfCall(ng_grpc_handle_t* handle, ng_methodContext_t* ctx){
 
         handle->response.call_id = ctx->call_id;
         handle->response.grpc_status = GrpcStatus_OK;
-        handle->response.has_response_type = true;
+        /* handle->response.has_response_type = true; */
         handle->response.response_type = GrpcResponseType_END_OF_CALL;
 
         if (!pb_encode(handle->output, GrpcResponse_fields, &handle->response)){

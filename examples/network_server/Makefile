@@ -58,7 +58,7 @@ vpath %.options $(abspath ../../)
 .PHONY: all
 all: server client
 
-% : %.c common.c fileproto.pb.c fileproto.ng.c nanogrpc.pb.c
+% : %.c common.c fileproto.pb.c nanogrpc.pb.c
 	echo $@
 	$(CC) $(CFLAGS) -o $@ $^ $(NANOPB_CORE) $(NANOGRPC_CORE)
 
@@ -66,14 +66,9 @@ all: server client
 
 # Rule for building .pb.c and .pb.h
 
-%.ng.c %.ng.h: %.proto $(wildcard %.options)
-	cd $(dir $(abspath $<)) && \
-	$(PROTOC) --plugin=$(NANOGRPC_DIR)/generator/protoc-gen-grpc $(PROTOC_INC) --grpc_out=$(BUILD_DIR) $<
-
-# Override rule for building .pb.c and .pb.h
 %.pb.c %.pb.h: %.proto $(wildcard %.options)
 	cd $(dir $(abspath $<)) && \
-	$(PROTOC) $(PROTOC_OPTS) --nanopb_out=$(BUILD_DIR) $<
+	$(PROTOC) --plugin=$(NANOGRPC_DIR)/generator/protoc-gen-grpc $(PROTOC_INC) --grpc_out=$(BUILD_DIR) $<
 
 
 .PHONY: clean
