@@ -31,7 +31,7 @@ static bool read_callback(pb_istream_t *stream, uint8_t *buf, size_t count)
     
     result = recv(fd, buf, count, MSG_WAITALL);
     
-    if (buf[0] == 0) {
+    if (result == 0 || buf[0] == 0) {
         stream->bytes_left = 0; /* EOF */
         return false;
     }
