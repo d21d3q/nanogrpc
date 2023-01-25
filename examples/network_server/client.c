@@ -127,8 +127,7 @@ bool listdir(int fd, char *path)
         }
 
 
-        gRequest.path_hash = 3;
-        gRequest.path = "/FileServer/ListFiles";
+        gRequest.path_hash = 1575895564;
         gRequest.data.funcs.encode = &encodeRequestCallback;
         ng_encodeMessageCallbackArgument_t arg;
         arg.method = &FileServer_ListFiles_method;

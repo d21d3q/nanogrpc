@@ -7,6 +7,7 @@ from __future__ import unicode_literals
 nanopb_version = "nanopb-0.4.8-dev"
 
 import sys
+import binascii
 import re
 import codecs
 import copy
@@ -1667,16 +1668,16 @@ class Method:
         result += 'DEFINE_FILL_WITH_ZEROS_FUNCTION({})\n'.format(self.output)
         result += '\n'
         result += 'ng_method_t {}_method = {{\n'.format(self.full_name)
-        result += '    "{}",\n'.format(self.name)           # name
-        result += '    0,\n'  # TODO place method id option here # hasg
-        # result += '    NULL,\n'                           # handler
-        result += '    NULL,\n'                             # callback
-        # result += '    NULL,\n'                             # request_holder
-        result += '    NULL,\n'                             # context
-        result += '    {}_fields,\n'.format(self.input)     # request_fields
+        result += '    "{}",\n'.format(self.name)                   # name
+        result += '    {},\n'.format(binascii.crc32(self.name.encode()))   # crc32 hash of path name
+        # result += '    NULL,\n'                                   # handler
+        result += '    NULL,\n'                                     # callback
+        # result += '    NULL,\n'                                   # request_holder
+        result += '    NULL,\n'                                     # context
+        result += '    {}_fields,\n'.format(self.input)             # request_fields
         result += '    &FILL_WITH_ZEROS_FUNCTION_NAME({}),\n'.format(self.input) # request_fillWithZeros
-        # result += '    NULL,\n'                             # response_holder
-        result += '    {}_fields,\n'.format(self.output)    # response_fields
+        # result += '    NULL,\n'                                   # response_holder
+        result += '    {}_fields,\n'.format(self.output)            # response_fields
         result += '    &FILL_WITH_ZEROS_FUNCTION_NAME({}),\n'.format(self.output) # response_fillWithZeros
 
         if self.server_streaming:
