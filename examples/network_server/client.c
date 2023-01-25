@@ -108,23 +108,13 @@ bool listdir(int fd, char *path)
     {
         pb_ostream_t output = pb_ostream_from_socket(fd);
 
-        /* In our protocol, path is optional. If it is not given,
-         * the server will list the root directory. */
-        if (path == NULL)
+        if (strlen(path) + 1 > sizeof(Path_holder.path))
         {
-            Path_holder.has_path = false;
+            fprintf(stderr, "Too long Path_holder.\n");
+            return false;
         }
-        else
-        {
-            Path_holder.has_path = true;
-            if (strlen(path) + 1 > sizeof(Path_holder.path))
-            {
-                fprintf(stderr, "Too long Path_holder.\n");
-                return false;
-            }
 
-            strcpy(Path_holder.path, path);
-        }
+        strcpy(Path_holder.path, path);
 
 
         gRequest.path_hash = 1575895564;

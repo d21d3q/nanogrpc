@@ -60,7 +60,6 @@ static ng_method_t * getMethodByHash(ng_grpc_handle_t *handle, ng_hash_t hash){
   while (service != NULL){ /* Iterate over services */
     method = service->method;
     while (method != NULL){ /* Iterate over methods in service */
-      printf("checking method %u versus hash %u", method->nameHash, hash);
       if (method->nameHash == hash){
         return method;
       } else {
@@ -88,26 +87,28 @@ static ng_method_t * getMethodByPath(ng_grpc_handle_t *handle, char * path){
   ng_method_t *method = NULL;
   ng_service_t *service = handle->serviceHolder;
   char * serviceName, * methodName;
-  size_t serviceNameLenth, methodNameLength;
+  size_t serviceNameLength, methodNameLength;
 
   if (path[0] != '/' || path[0] == '\0'){
     return NULL;
   }
   serviceName = path + 1;
   methodName = strpbrk(serviceName, "/");
-  if (methodName != NULL){
-    serviceNameLenth = methodName - serviceName;
 
-    if (serviceNameLenth > 0 && strlen(methodName) > 1){
-      methodName += 1;
-      methodNameLength = strlen(methodName);
-      if (strpbrk(methodName, "/") != NULL){ /* there should be no more delimiters in path*/
-        return NULL;
-      }
-    } else { /* service name or method name without characters  */
-      return NULL;
-    }
-  } else { /* no more slashes in path but should be one */
+  if (methodName == NULL) {
+    return NULL;
+  }
+
+  serviceNameLength = methodName - serviceName;
+
+  if (!(serviceNameLength > 0 && strlen(methodName) > 1)) {
+    return NULL;
+  }
+
+  methodName += 1;
+  methodNameLength = strlen(methodName);
+  
+  if (strpbrk(methodName, "/") != NULL){ /* there should be no more delimiters in path*/
     return NULL;
   }
 
@@ -115,8 +116,8 @@ static ng_method_t * getMethodByPath(ng_grpc_handle_t *handle, char * path){
    * zero terminated string, but if we don't want to insert zeros into
    * given string we have to use strncmp and compare names lengths. */
   while (service != NULL){ /* Iterate over services */
-    if (strncmp(service->name, serviceName, serviceNameLenth) == 0 &&
-        strlen(service->name) == serviceNameLenth){ /* service name match */
+    if (strncmp(service->name, serviceName, serviceNameLength) == 0 &&
+        strlen(service->name) == serviceNameLength){ /* service name match */
       method = service->method;
       while (method != NULL){ /* Iterate over methods in service */
         if (strncmp(method->name, methodName, methodNameLength) == 0 &&
@@ -246,11 +247,10 @@ bool ng_GrpcParseBlocking(ng_grpc_handle_t *handle){
   } else { /* Unable to decode GrpcRequest */
 	  /* unable to pase GrpcRequest */
     /* return fasle // TODO ? */
-    printf("%lu, %s \n", handle->input->bytes_left, handle->input->errmsg);
     handle->response.call_id = 0;
     handle->response.grpc_status = GrpcStatus_DATA_LOSS;
   }
-  if (!pb_encode(handle->output, GrpcResponse_fields, &handle->response)){
+  if (!pb_encode_ex(handle->output, GrpcResponse_fields, &handle->response, PB_ENCODE_NULLTERMINATED)){
     /* TODO unable to encode */
     ret = false;
   }
@@ -629,116 +629,110 @@ bool ng_isCallOngoing(ng_grpc_handle_t* handle, ng_callId_t id){
 
 
 bool ng_AsyncResponse(ng_grpc_handle_t *handle, ng_methodContext_t* ctx, bool endOfCall){
-  bool ret = true;
   /* Theoreticaly canIWriteToOutput and ctx should be verified previously */
-  if (handle != NULL && ctx != NULL){
-    if (ng_isCallOngoing(handle, ctx->call_id)){
-      if (handle->canIWriteToOutput(handle)){
-        bool validResponse;
-        size_t responseSize;
-
-        GrpcResponse_fillWithZeros(&handle->response);
-        validResponse = pb_get_encoded_size(&responseSize,
-                                            ctx->method->response_fields,
-                                            ctx->response);
-        if (validResponse){
-          handle->response.call_id = ctx->call_id;
-          handle->response.grpc_status = GrpcStatus_OK;
-          handle->response.data.funcs.encode = &encodeResponseCallback;
-          handle->response.data.arg = ctx;
-          if (endOfCall || ctx->method->server_streaming == false){
-            /* handle->response.has_response_type = true; */
-            handle->response.response_type = GrpcResponseType_END_OF_CALL;
-          } else {
-            /* handle->response.has_response_type = true; */
-            handle->response.response_type = GrpcResponseType_STREAM;
-          }
-
-          if (!pb_encode(handle->output, GrpcResponse_fields, &handle->response)){
-            /* TODO unable to encode */
-            ret = false;
-          } else {
-            if (handle->outputReady != NULL){
-              handle->outputReady(handle);
-            }
-            if (endOfCall || ctx->method->server_streaming == false){
-              #ifdef PB_ENABLE_MALLOC
-              if (ctx != NULL){
-                /* In case response would have dynamically allocated fields */
-                if (ctx->request != NULL){
-                  pb_release(ctx->method->request_fields, ctx->request);
-                }
-              }
-              #endif
-              ng_removeCall(handle, ctx->call_id);
-            }
-          }
-
-          #ifdef PB_ENABLE_MALLOC
-          if (ctx != NULL){
-            /* In case response would have dynamically allocated fields */
-            if (ctx->response != NULL){
-              pb_release(ctx->method->response_fields, ctx->response);
-            }
-          }
-          #endif
-
-        } else { /* Response not valid */
-          /* TODO unable response not valid. Drop it. Report? */
-          ret = false;
-        }
-      } else { /* unable to stream */
-        /* TODO inform user, that he should try to shedule sending later */
-        ret = false;
-      }
-    } else { /* There is no such call onging. function shouldn't be called */
-      ret = false;
-    }
-  } else { /* invalid handle and context */
-    ret = false;
+  if (handle == NULL || ctx == NULL) {
+    return false;
   }
-  return ret;
+  if (!ng_isCallOngoing(handle, ctx->call_id)){
+    return false;
+  }
+  if (!handle->canIWriteToOutput(handle)){
+    return false;
+  }
+
+  bool validResponse;
+  size_t responseSize;
+
+  GrpcResponse_fillWithZeros(&handle->response);
+  validResponse = pb_get_encoded_size(&responseSize,
+                                      ctx->method->response_fields,
+                                      ctx->response);
+  if (!validResponse) {
+    return false;
+  }
+
+  handle->response.call_id = ctx->call_id;
+  handle->response.grpc_status = GrpcStatus_OK;
+  handle->response.data.funcs.encode = &encodeResponseCallback;
+  handle->response.data.arg = ctx;
+  if (endOfCall || ctx->method->server_streaming == false){
+    /* handle->response.has_response_type = true; */
+    handle->response.response_type = GrpcResponseType_END_OF_CALL;
+  } else {
+    /* handle->response.has_response_type = true; */
+    handle->response.response_type = GrpcResponseType_STREAM;
+  }
+
+  if (!pb_encode_ex(handle->output, GrpcResponse_fields, &handle->response, PB_ENCODE_NULLTERMINATED)){
+    /* TODO unable to encode */
+    return false;
+  }
+  
+  if (handle->outputReady != NULL){
+    handle->outputReady(handle);
+  }
+  if (endOfCall || ctx->method->server_streaming == false){
+    #ifdef PB_ENABLE_MALLOC
+    if (ctx != NULL){
+      /* In case response would have dynamically allocated fields */
+      if (ctx->request != NULL){
+        pb_release(ctx->method->request_fields, ctx->request);
+      }
+    }
+    #endif
+    ng_removeCall(handle, ctx->call_id);
+  }
+
+  #ifdef PB_ENABLE_MALLOC
+  if (ctx != NULL){
+    /* In case response would have dynamically allocated fields */
+    if (ctx->response != NULL){
+      pb_release(ctx->method->response_fields, ctx->response);
+    }
+  }
+  #endif
+  return true;
 }
 
 
 bool ng_endOfCall(ng_grpc_handle_t* handle, ng_methodContext_t* ctx){
-  bool ret = true;
-  if(handle != NULL && ctx != NULL){
-    if (ng_isCallOngoing(handle, ctx->call_id)){
-      if (handle->canIWriteToOutput(handle)){
-        GrpcResponse_fillWithZeros(&handle->response);
-
-        handle->response.call_id = ctx->call_id;
-        handle->response.grpc_status = GrpcStatus_OK;
-        /* handle->response.has_response_type = true; */
-        handle->response.response_type = GrpcResponseType_END_OF_CALL;
-
-        if (!pb_encode(handle->output, GrpcResponse_fields, &handle->response)){
-          /* TODO unable to encode */
-          ret = false;
-        } else {
-          if (handle->outputReady != NULL){
-            handle->outputReady(handle);
-          }
-          ng_removeCall(handle, ctx->call_id);
-          #ifdef PB_ENABLE_MALLOC
-          if (ctx != NULL){
-            /* In case response would have dynamically allocated fields */
-            if (ctx->response){
-              pb_release(ctx->method->request_fields, ctx->request);
-              pb_release(ctx->method->response_fields, ctx->response);
-            }
-          }
-          #endif
-        }
-      } else {
-        ret = false;
-      }
-    } else {
-      ret = false;
-    }
-  } else {
-    ret = false;
+  if (handle == NULL || ctx == NULL) {
+    return false;
   }
-  return ret;
+
+  if (!ng_isCallOngoing(handle, ctx->call_id)) {
+    return false;
+  }
+
+  if (!handle->canIWriteToOutput(handle)) {
+    return false;
+  }
+
+  GrpcResponse_fillWithZeros(&handle->response);
+
+  handle->response.call_id = ctx->call_id;
+  handle->response.grpc_status = GrpcStatus_OK;
+  /* handle->response.has_response_type = true; */
+  handle->response.response_type = GrpcResponseType_END_OF_CALL;
+
+  if (!pb_encode(handle->output, GrpcResponse_fields, &handle->response)){
+    /* TODO unable to encode */
+    return false;
+  }
+
+  if (handle->outputReady != NULL){
+    handle->outputReady(handle);
+  }
+  ng_removeCall(handle, ctx->call_id);
+  #ifdef PB_ENABLE_MALLOC
+  if (ctx != NULL){
+    /* In case response would have dynamically allocated fields */
+    if (ctx->response){
+      pb_release(ctx->method->request_fields, ctx->request);
+      pb_release(ctx->method->response_fields, ctx->response);
+    }
+  }
+  #endif
+
+  return true;
 }

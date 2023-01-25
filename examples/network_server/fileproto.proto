@@ -6,10 +6,19 @@ syntax = "proto3";
 
 service FileServer {
   rpc ListFiles (Path) returns (FileList);
+  rpc SendFile (File) returns (IOResult);
+}
+
+message File {
+    string path = 1;
+}
+
+message IOResult {
+    bool didSave = 1;
 }
 
 message Path {
-    optional string path = 1;
+    string path = 1;
 }
 
 message FileInfo {
@@ -18,6 +27,6 @@ message FileInfo {
 }
 
 message FileList {
-    optional bool path_error = 1;
+    bool path_error = 1;
     repeated FileInfo file = 2;
 }

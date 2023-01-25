@@ -84,14 +84,12 @@ ng_CallbackStatus_t FileServer_service_methodCallback(ng_methodContext_t* ctx){
         perror("opendir");
 
         /* Directory was not found, transmit error status */
-        response->has_path_error = true;
         response->path_error = true;
         response->file.funcs.encode = NULL;
     }
     else
     {
         /* Directory was found, transmit filenames */
-        response->has_path_error = false;
         response->file.funcs.encode = &listdir_callback;
         response->file.arg = &request->path;
     }
