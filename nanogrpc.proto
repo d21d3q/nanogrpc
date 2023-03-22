@@ -12,7 +12,7 @@ message GrpcRequest {
   //   int32 path_crc = 1;
   //   string path = 2 [(nanopb).max_size = 8];
   // }
-  int32 path_hash = 2;
+  fixed32 path_hash = 2;
   string path = 3;
   bytes data = 10;
 }
@@ -55,8 +55,8 @@ enum GrpcResponseType {
 message GrpcResponse {
   int32 call_id = 1;
   GrpcStatus grpc_status = 2;
-  string grpc_mesage = 3;
-  GrpcResponseType response_type = 4;
+  GrpcResponseType response_type = 3;
+  int32 error_code = 4;
   bytes data = 10;
 }
 
@@ -72,7 +72,7 @@ message GrpcRequest_CS {
     //   int32 path_crc = 1;
     //   string path = 2 [(nanopb).max_size = 8];
     // }
-    int32 path_hash = 2;
+    fixed32 path_hash = 2;
     string path = 3;
     bytes data = 10;
 }
@@ -80,7 +80,7 @@ message GrpcRequest_CS {
 message GrpcResponse_CS {
   int32 call_id = 1;
   GrpcStatus grpc_status = 2;
-  string grpc_mesage = 3;
-  GrpcResponseType response_type = 4;
+  GrpcResponseType response_type = 3;
+  int32 error_code = 4;
   bytes data = 10;
 }

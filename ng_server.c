@@ -12,36 +12,13 @@ static DEFINE_FILL_WITH_ZEROS_FUNCTION(GrpcResponse)
 
 #include <string.h>
 
-const char* errorMessages[] = {
-  "Callback failed",
-  "Unable to decode message from request holder",
-  "Unable to register call",
-  "callback not found",
-  "No method found"
-};
-
-
-
-enum grpcError  {
+enum GrpcErrorCodes  {
   GrpcErrorMsg_callback_failed = 0,
   GrpcErrorMsg_unable_to_decode_message,
   GrpcErrorMsg_unable_to_register_call,
   GrpcErrorMsg_callback_not_found,
   GrpcErrorMsg_no_method_found
 };
-
-
-static bool encodeErrorMessageCallback(pb_ostream_t *stream, const pb_field_t *field, void * const *arg)
-{
-  uint32_t index = *(uint32_t*)arg;
-  /* char *str = get_string_from_somewhere(); */
-  if (!pb_encode_tag_for_field(stream, field))
-      return false;
-  /* we are encoding tag for bytes, but writeing submessage, */
-  /* as long it is prepended with size same as bytes */
-  /*return pb_encode_submessage(stream, method->response_fields, method->response_holder);*/
-  return  pb_encode_string(stream, (pb_byte_t*) errorMessages[index], strlen(errorMessages[index]));
-}
 
 /*!
  * @brief Returns method with given hash.
@@ -202,7 +179,8 @@ bool ng_GrpcParseBlocking(ng_grpc_handle_t *handle){
       if (method->callback != NULL &&
           ((method->context != NULL) ?
             (method->context->request && method->context->response):
-            false)){ /* callback and context found */
+            false)
+      ){ /* callback and context found */
         ctx = method->context;
         ctx->method = method;
         method->request_fillWithZeros(ctx->request);
@@ -464,7 +442,6 @@ bool ng_GrpcParseNonBlocking(ng_grpc_handle_t* handle){
   ng_CallbackStatus_t status;
   ng_method_t *method = NULL;
   ng_methodContext_t* ctx = NULL;
-  uint32_t error = 0;
   bool sendNow = true;
   bool ret = true;
   if (handle->input == NULL || handle->output == NULL ||
@@ -531,24 +508,18 @@ bool ng_GrpcParseNonBlocking(ng_grpc_handle_t* handle){
                 sendNow = false;
               } else { /* callback failed. */
                 handle->response.grpc_status = GrpcStatus_INTERNAL;
-                handle->response.grpc_mesage.funcs.encode = &encodeErrorMessageCallback;
-                error = GrpcErrorMsg_callback_failed;
-                handle->response.grpc_mesage.arg = &error;
+                handle->response.error_code = GrpcErrorMsg_callback_failed;
               }
            } else { /* unable to decode message from request holder */
               /* We registered it previously but since decoding failed
                  we have to remove it since we won't be able to respond */
               ng_removeCall(handle, call_id);
               handle->response.grpc_status = GrpcStatus_INVALID_ARGUMENT;
-              handle->response.grpc_mesage.funcs.encode = &encodeErrorMessageCallback;
-              error = GrpcErrorMsg_unable_to_decode_message;
-      		    handle->response.grpc_mesage.arg = &error;
+              handle->response.error_code = GrpcErrorMsg_unable_to_decode_message;
             }
           } else { /* Unable to register call */
             handle->response.grpc_status = GrpcStatus_INTERNAL;
-            handle->response.grpc_mesage.funcs.encode = &encodeErrorMessageCallback;
-            error = GrpcErrorMsg_unable_to_register_call;
-      		  handle->response.grpc_mesage.arg = &error;
+            handle->response.error_code = GrpcErrorMsg_unable_to_register_call;
           }
         } else { /* no available context */
           handle->response.grpc_status = GrpcStatus_INTERNAL;
