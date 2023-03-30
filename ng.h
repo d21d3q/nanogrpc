@@ -77,7 +77,7 @@ struct ng_methodContext_s {
 
 struct ng_method_s {
     const char *name;
-    ng_hash_t nameHash;
+    ng_hash_t method_hash;
     /* pointers to method which needs to parse input stream in itself. */
     /*ng_GrpcStatus_t (*handler)(pb_istream_t * input, pb_ostream_t * output); */
     /* callback, if not NULL, then it will be called */
@@ -98,7 +98,7 @@ struct ng_method_s {
 typedef struct ng_service_s ng_service_t;
 struct ng_service_s {
   const char *name;
-  ng_hash_t name_hash;
+  ng_hash_t service_hash;
   ng_method_t *method;
   ng_service_t *next;
 };
@@ -115,8 +115,8 @@ struct ng_grpc_handle_s {
     ng_service_t *serviceHolder;
     pb_istream_t *input;
     pb_ostream_t *output;
-    GrpcRequest request;
-    GrpcResponse response;
+    RpcPacketRequest request;
+    RpcPacketResponse response;
     ng_GrpcStatus_t lastStatus;
     bool (* canIWriteToOutput)(ng_grpc_handle_t* handle);
     void (* outputReady)(ng_grpc_handle_t* handle);

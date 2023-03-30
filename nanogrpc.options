@@ -1,5 +1,3 @@
-GrpcRequest.data type:FT_POINTER
-GrpcRequest.path type:FT_POINTER
+RpcPacketRequest.payload type:FT_POINTER
 
-GrpcRequest_CS.path type:FT_POINTER
-GrpcResponse_CS.data type:FT_POINTER
+RpcPacketResponse_CS.payload type:FT_POINTER

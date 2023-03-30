@@ -6,8 +6,8 @@
 #include <stdio.h>
 
 
-static DEFINE_FILL_WITH_ZEROS_FUNCTION(GrpcRequest)
-static DEFINE_FILL_WITH_ZEROS_FUNCTION(GrpcResponse)
+static DEFINE_FILL_WITH_ZEROS_FUNCTION(RpcPacketRequest)
+static DEFINE_FILL_WITH_ZEROS_FUNCTION(RpcPacketResponse)
 
 
 #include <string.h>
@@ -37,72 +37,10 @@ static ng_method_t * getMethodByHash(ng_grpc_handle_t *handle, ng_hash_t hash){
   while (service != NULL){ /* Iterate over services */
     method = service->method;
     while (method != NULL){ /* Iterate over methods in service */
-      if (method->nameHash == hash){
+      if (method->method_hash == hash){
         return method;
       } else {
         method = method->next;
-      }
-    }
-    service = service->next;
-  }
-  return NULL;
-}
-
-
-/*!
- * @brief Returns method with given name.
- *
- * Function Iterates over all methods found in servies registered in
- * given grpc handle. Method name needs to start with '/' and have to be
- * delimited with '/'.
- * @param  handle pointer to grpc handle
- * @param  name   name of method to find
- * @return        pointer to first method whose hash match given one,
- *                Null if not found.
- */
-static ng_method_t * getMethodByPath(ng_grpc_handle_t *handle, char * path){
-  ng_method_t *method = NULL;
-  ng_service_t *service = handle->serviceHolder;
-  char * serviceName, * methodName;
-  size_t serviceNameLength, methodNameLength;
-
-  if (path[0] != '/' || path[0] == '\0'){
-    return NULL;
-  }
-  serviceName = path + 1;
-  methodName = strpbrk(serviceName, "/");
-
-  if (methodName == NULL) {
-    return NULL;
-  }
-
-  serviceNameLength = methodName - serviceName;
-
-  if (!(serviceNameLength > 0 && strlen(methodName) > 1)) {
-    return NULL;
-  }
-
-  methodName += 1;
-  methodNameLength = strlen(methodName);
-  
-  if (strpbrk(methodName, "/") != NULL){ /* there should be no more delimiters in path*/
-    return NULL;
-  }
-
-  /* in order to compare names we could use strcmp, but it requires
-   * zero terminated string, but if we don't want to insert zeros into
-   * given string we have to use strncmp and compare names lengths. */
-  while (service != NULL){ /* Iterate over services */
-    if (strncmp(service->name, serviceName, serviceNameLength) == 0 &&
-        strlen(service->name) == serviceNameLength){ /* service name match */
-      method = service->method;
-      while (method != NULL){ /* Iterate over methods in service */
-        if (strncmp(method->name, methodName, methodNameLength) == 0 &&
-            strlen(method->name) == methodNameLength){ /* methodname match */
-          return method;
-        } else {
-          method = method->next;
-        }
       }
     }
     service = service->next;
@@ -157,22 +95,18 @@ bool ng_GrpcParseBlocking(ng_grpc_handle_t *handle){
     return false;
   }
 
-  GrpcRequest_fillWithZeros(&handle->request);
-  GrpcResponse_fillWithZeros(&handle->response);
+  RpcPacketRequest_fillWithZeros(&handle->request);
+  RpcPacketResponse_fillWithZeros(&handle->response);
 
-  if (pb_decode(handle->input, GrpcRequest_fields, &handle->request)){
+  if (pb_decode(handle->input, RpcPacketRequest_fields, &handle->request)){
     pb_istream_t input;
-    input = pb_istream_from_buffer(handle->request.data->bytes, handle->request.data->size);
+    input = pb_istream_from_buffer(handle->request.payload->bytes, handle->request.payload->size);
 
     handle->response.call_id = handle->request.call_id;
 
     /* look for method by hash only if it has been provided */
-    if (handle->request.path_hash != 0){
-      method = getMethodByHash(handle, handle->request.path_hash);
-    }
-    /* if hash hasn't been provided, we can still try to find by name */
-    if (method == NULL && handle->request.path != NULL){
-        method = getMethodByPath(handle, handle->request.path);
+    if (handle->request.method_id != 0){
+      method = getMethodByHash(handle, handle->request.method_id);
     }
 
     if (method != NULL) {
@@ -197,38 +131,44 @@ bool ng_GrpcParseBlocking(ng_grpc_handle_t *handle){
                                                 method->response_fields,
                                                 ctx->response);
             if (validResponse){
-              handle->response.grpc_status = GrpcStatus_OK;
-              handle->response.data.funcs.encode = &encodeResponseCallback;
+              handle->response.status = GrpcStatus_OK;
+              handle->response.payload.funcs.encode = &encodeResponseCallback;
               /*ng_encodeMessageCallbackArgument_t arg;
               arg.method = method;
               arg.context = ctx;*/
-              handle->response.data.arg = ctx;
+              handle->response.payload.arg = ctx;
             } else {
-              handle->response.grpc_status = GrpcStatus_INTERNAL;
+              handle->response.type = PacketType_SERVER_ERROR;
+              handle->response.status = GrpcStatus_INTERNAL;
               /* TODO insert here message about not being able to
               * encode method request? */
             }
           } else { /* callback failed, we ony encode its status, streaming, non blocking not supported here. */
-            handle->response.grpc_status = GrpcStatus_INTERNAL;
+            handle->response.type = PacketType_SERVER_ERROR;
+            handle->response.status = GrpcStatus_INTERNAL;
           }
          /* ret = GrpcStatus_OK; */
        } else { /* unable to decode message from request holder */
-          handle->response.grpc_status = GrpcStatus_INVALID_ARGUMENT;
+          handle->response.type = PacketType_SERVER_ERROR;
+          handle->response.status = GrpcStatus_INVALID_ARGUMENT;
         }
       } else { /* handler not found or no context */
-        handle->response.grpc_status = GrpcStatus_UNIMPLEMENTED;
+        handle->response.type = PacketType_SERVER_ERROR;
+        handle->response.status = GrpcStatus_UNIMPLEMENTED;
       }
     } else { /* No method found*/
-      handle->response.grpc_status = GrpcStatus_NOT_FOUND;
+      handle->response.type = PacketType_SERVER_ERROR;
+      handle->response.status = GrpcStatus_NOT_FOUND;
     }
     /* inser handle end */
-  } else { /* Unable to decode GrpcRequest */
-	  /* unable to pase GrpcRequest */
+  } else { /* Unable to decode RpcPacket */
+	  /* unable to pase RpcPacket */
     /* return fasle // TODO ? */
     handle->response.call_id = 0;
-    handle->response.grpc_status = GrpcStatus_DATA_LOSS;
+    handle->response.type = PacketType_SERVER_ERROR;
+    handle->response.status = GrpcStatus_DATA_LOSS;
   }
-  if (!pb_encode_ex(handle->output, GrpcResponse_fields, &handle->response, PB_ENCODE_NULLTERMINATED)){
+  if (!pb_encode_ex(handle->output, RpcPacketResponse_fields, &handle->response, PB_ENCODE_NULLTERMINATED)){
     /* TODO unable to encode */
     ret = false;
   }
@@ -247,8 +187,8 @@ bool ng_GrpcParseBlocking(ng_grpc_handle_t *handle){
   }
 
   #ifdef PB_ENABLE_MALLOC
-  pb_release(GrpcRequest_fields, &handle->request);
-  pb_release(GrpcResponse_fields, &handle->response); /* TODO leave it here? */
+  pb_release(RpcPacketRequest_fields, &handle->request);
+  pb_release(RpcPacketResponse_fields, &handle->response); /* TODO leave it here? */
   #endif
   return ret; /* default true */
 }
@@ -448,20 +388,16 @@ bool ng_GrpcParseNonBlocking(ng_grpc_handle_t* handle){
       handle->canIWriteToOutput == NULL || handle->outputReady == NULL){
     return false;
   }
-  GrpcRequest_fillWithZeros(&handle->request);
-  GrpcResponse_fillWithZeros(&handle->response);
+  RpcPacketRequest_fillWithZeros(&handle->request);
+  RpcPacketResponse_fillWithZeros(&handle->response);
 
-  if (pb_decode(handle->input, GrpcRequest_fields, &handle->request)){
+  if (pb_decode(handle->input, RpcPacketRequest_fields, &handle->request)){
     ng_callId_t call_id = handle->response.call_id = handle->request.call_id;
-    pb_istream_t input = pb_istream_from_buffer(handle->request.data->bytes, handle->request.data->size);
+    pb_istream_t input = pb_istream_from_buffer(handle->request.payload->bytes, handle->request.payload->size);
 
     /* look for method by hash only if it has been provided */
-    if (handle->request.path_hash != 0){
-      method = getMethodByHash(handle, handle->request.path_hash);
-    }
-    /* if hash hasn't been provided, we can still try to find by name */
-    if (method == NULL && handle->request.path != NULL){
-        method = getMethodByPath(handle, handle->request.path);
+    if (handle->request.method_id != 0){
+      method = getMethodByHash(handle, handle->request.method_id);
     }
 
     if (method != NULL) {
@@ -491,55 +427,60 @@ bool ng_GrpcParseNonBlocking(ng_grpc_handle_t* handle){
                                                     method->response_fields,
                                                     ctx->response);
                 if (validResponse){
-                  handle->response.grpc_status = GrpcStatus_OK;
-                  handle->response.data.funcs.encode = &encodeResponseCallback;
-                  handle->response.data.arg = ctx;
+                  handle->response.type = PacketType_RESPONSE;
+                  handle->response.status = GrpcStatus_OK;
+                  handle->response.payload.funcs.encode = &encodeResponseCallback;
+                  handle->response.payload.arg = ctx;
                 } else {
-                  handle->response.grpc_status = GrpcStatus_INTERNAL;
+                  handle->response.type = PacketType_SERVER_ERROR;
+                  handle->response.status = GrpcStatus_INTERNAL;
                   /* TODO insert here message about not being able to
                   * encode method request? */
                 }
                 if (status == CallbackStatus_Ok || method->server_streaming == false){
-                  /* handle->response.has_response_type = true; */
-                  handle->response.response_type = GrpcResponseType_END_OF_CALL;
+                  handle->response.type = PacketType_RESPONSE;
                   ng_removeCall(handle, call_id);
                 }
               } else if (status == CallbackStatus_WillRespondLater){
                 sendNow = false;
               } else { /* callback failed. */
-                handle->response.grpc_status = GrpcStatus_INTERNAL;
-                handle->response.error_code = GrpcErrorMsg_callback_failed;
+                handle->response.type = PacketType_SERVER_ERROR;
+                handle->response.status = GrpcStatus_INTERNAL | (GrpcErrorMsg_callback_failed >> 8);
               }
            } else { /* unable to decode message from request holder */
               /* We registered it previously but since decoding failed
                  we have to remove it since we won't be able to respond */
               ng_removeCall(handle, call_id);
-              handle->response.grpc_status = GrpcStatus_INVALID_ARGUMENT;
-              handle->response.error_code = GrpcErrorMsg_unable_to_decode_message;
+              handle->response.type = PacketType_SERVER_ERROR;
+              handle->response.status = GrpcStatus_INVALID_ARGUMENT | (GrpcErrorMsg_unable_to_decode_message >> 8);
             }
           } else { /* Unable to register call */
-            handle->response.grpc_status = GrpcStatus_INTERNAL;
-            handle->response.error_code = GrpcErrorMsg_unable_to_register_call;
+            handle->response.type = PacketType_SERVER_ERROR;
+            handle->response.status = GrpcStatus_INTERNAL | (GrpcErrorMsg_unable_to_register_call >> 8);
           }
         } else { /* no available context */
-          handle->response.grpc_status = GrpcStatus_INTERNAL;
+          handle->response.type = PacketType_SERVER_ERROR;
+          handle->response.status = GrpcStatus_INTERNAL;
         }
       } else { /* callback not found */
-        handle->response.grpc_status = GrpcStatus_UNIMPLEMENTED;
+        handle->response.type = PacketType_SERVER_ERROR;
+        handle->response.status = GrpcStatus_UNIMPLEMENTED;
       }
     } else { /* No method found*/
-      handle->response.grpc_status = GrpcStatus_NOT_FOUND;
+      handle->response.type = PacketType_SERVER_ERROR;
+      handle->response.status = GrpcStatus_NOT_FOUND;
     }
     /* inser handle end */
-  } else { /* Unable to decode GrpcRequest */
-	  /* unable to pase GrpcRequest */
+  } else { /* Unable to decode RpcPacket */
+	  /* unable to pase RpcPacket */
     /* return fasle // TODO ? */
     handle->response.call_id = 0;
-    handle->response.grpc_status = GrpcStatus_DATA_LOSS;
+    handle->response.type = PacketType_SERVER_ERROR;
+    handle->response.status = GrpcStatus_DATA_LOSS;
   }
   if (sendNow){
     if (handle->canIWriteToOutput(handle)){
-      if (!pb_encode(handle->output, GrpcResponse_fields, &handle->response)){
+      if (!pb_encode(handle->output, RpcPacketResponse_fields, &handle->response)){
         /* TODO unable to encode */
         ret = false;
       }
@@ -567,8 +508,8 @@ bool ng_GrpcParseNonBlocking(ng_grpc_handle_t* handle){
   } */
 
   #ifdef PB_ENABLE_MALLOC
-  pb_release(GrpcRequest_fields, &handle->request);
-  pb_release(GrpcResponse_fields, &handle->response); /* TODO leave it here? */
+  pb_release(RpcPacketRequest_fields, &handle->request);
+  pb_release(RpcPacketResponse_fields, &handle->response); /* TODO leave it here? */
   #endif
   return ret; /* default true */
 }
@@ -614,7 +555,7 @@ bool ng_AsyncResponse(ng_grpc_handle_t *handle, ng_methodContext_t* ctx, bool en
   bool validResponse;
   size_t responseSize;
 
-  GrpcResponse_fillWithZeros(&handle->response);
+  RpcPacketResponse_fillWithZeros(&handle->response);
   validResponse = pb_get_encoded_size(&responseSize,
                                       ctx->method->response_fields,
                                       ctx->response);
@@ -623,18 +564,16 @@ bool ng_AsyncResponse(ng_grpc_handle_t *handle, ng_methodContext_t* ctx, bool en
   }
 
   handle->response.call_id = ctx->call_id;
-  handle->response.grpc_status = GrpcStatus_OK;
-  handle->response.data.funcs.encode = &encodeResponseCallback;
-  handle->response.data.arg = ctx;
+  handle->response.status = GrpcStatus_OK;
+  handle->response.payload.funcs.encode = &encodeResponseCallback;
+  handle->response.payload.arg = ctx;
   if (endOfCall || ctx->method->server_streaming == false){
-    /* handle->response.has_response_type = true; */
-    handle->response.response_type = GrpcResponseType_END_OF_CALL;
+    handle->response.type = PacketType_RESPONSE;
   } else {
-    /* handle->response.has_response_type = true; */
-    handle->response.response_type = GrpcResponseType_STREAM;
+    handle->response.type = PacketType_SERVER_STREAM;
   }
 
-  if (!pb_encode_ex(handle->output, GrpcResponse_fields, &handle->response, PB_ENCODE_NULLTERMINATED)){
+  if (!pb_encode_ex(handle->output, RpcPacketResponse_fields, &handle->response, PB_ENCODE_NULLTERMINATED)){
     /* TODO unable to encode */
     return false;
   }
@@ -679,14 +618,13 @@ bool ng_endOfCall(ng_grpc_handle_t* handle, ng_methodContext_t* ctx){
     return false;
   }
 
-  GrpcResponse_fillWithZeros(&handle->response);
+  RpcPacketResponse_fillWithZeros(&handle->response);
 
   handle->response.call_id = ctx->call_id;
-  handle->response.grpc_status = GrpcStatus_OK;
-  /* handle->response.has_response_type = true; */
-  handle->response.response_type = GrpcResponseType_END_OF_CALL;
+  handle->response.status = GrpcStatus_OK;
+  handle->response.type = PacketType_RESPONSE;
 
-  if (!pb_encode(handle->output, GrpcResponse_fields, &handle->response)){
+  if (!pb_encode(handle->output, RpcPacketResponse_fields, &handle->response)){
     /* TODO unable to encode */
     return false;
   }

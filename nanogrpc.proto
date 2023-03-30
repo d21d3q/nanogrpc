@@ -3,20 +3,7 @@ syntax = "proto3";
 
 // import 'nanopb.proto';
 
-message GrpcRequest {
-  int32 call_id = 1;
-  // This would be ideal to have oneof here,
-  // but since callback inside oneof is not supported
-  // I am leaving strign path as optional
-  // oneof Path_oneof{
-  //   int32 path_crc = 1;
-  //   string path = 2 [(nanopb).max_size = 8];
-  // }
-  fixed32 path_hash = 2;
-  string path = 3;
-  bytes data = 10;
-}
-
+// Enumerate standard gRPC status codes.
 enum GrpcStatus {
   OK = 0;
   CANCELLED = 1;
@@ -37,50 +24,79 @@ enum GrpcStatus {
   DATA_LOSS = 15;
 }
 
-enum GrpcRequestType {
-  REGULER = 0;
-  END_ALL_CALLS = 1;
-  PING = 2;
-  GET_ALL_SERVICES = 3;
+enum PacketType {
+  // To simplify identifying the origin of a packet, client-to-server packets
+  // use even numbers and server-to-client packets use odd numbers.
+
+  // Client-to-server packets
+
+  // The client invokes an RPC. Always the first packet.
+  REQUEST = 0;
+
+  // A message in a client stream. Always sent after a REQUEST and before a
+  // CLIENT_REQUEST_COMPLETION.
+  CLIENT_STREAM = 2;
+
+  // The client received a packet for an RPC it did not request.
+  CLIENT_ERROR = 4;
+
+  // Client has requested for call completion. In client streaming and
+  // bi-directional streaming RPCs, this also indicates that the client is done
+  // with sending requests.
+  CLIENT_REQUEST_COMPLETION = 8;
+
+  // Server-to-client packets
+
+  // The RPC has finished.
+  RESPONSE = 1;
+
+  // The server was unable to process a request.
+  SERVER_ERROR = 5;
+
+  // A message in a server stream.
+  SERVER_STREAM = 7;
+
+  // Reserve field numbers for deprecated PacketTypes.
+  reserved 3;  // SERVER_STREAM_END (equivalent to RESPONSE now)
+  reserved 6;  // CANCEL (replaced by CLIENT_ERROR with status CANCELLED)
 }
 
-enum GrpcResponseType {
-  REGULAR = 0;
-  STREAM = 1;
-  END_OF_STREAM = 2;
-  END_OF_CALL = 3;
-  PONG = 4;
+message RpcPacketRequest {
+  PacketType type = 1;
+  uint32 channel_id = 2;
+  fixed32 service_id = 3;
+  fixed32 method_id = 4;
+  bytes payload = 5;
+  uint32 status = 6;
+  uint32 call_id = 7;
 }
 
-message GrpcResponse {
-  int32 call_id = 1;
-  GrpcStatus grpc_status = 2;
-  GrpcResponseType response_type = 3;
-  int32 error_code = 4;
-  bytes data = 10;
+message RpcPacketResponse {
+  PacketType type = 1;
+  uint32 channel_id = 2;
+  fixed32 service_id = 3;
+  fixed32 method_id = 4;
+  bytes payload = 5;
+  uint32 status = 6;
+  uint32 call_id = 7;
 }
 
-// Following messages are for client side implementation
-// they differ from only in options
-
-message GrpcRequest_CS {
-    int32 call_id = 1;
-    // This would be ideal to have oneof here,
-    // but since callback inside oneof is not supported
-    // I am leaving strign path as optional
-    // oneof Path_oneof{
-    //   int32 path_crc = 1;
-    //   string path = 2 [(nanopb).max_size = 8];
-    // }
-    fixed32 path_hash = 2;
-    string path = 3;
-    bytes data = 10;
+message RpcPacketRequest_CS {
+  PacketType type = 1;
+  uint32 channel_id = 2;
+  fixed32 service_id = 3;
+  fixed32 method_id = 4;
+  bytes payload = 5;
+  uint32 status = 6;
+  uint32 call_id = 7;
 }
 
-message GrpcResponse_CS {
-  int32 call_id = 1;
-  GrpcStatus grpc_status = 2;
-  GrpcResponseType response_type = 3;
-  int32 error_code = 4;
-  bytes data = 10;
+message RpcPacketResponse_CS {
+  PacketType type = 1;
+  uint32 channel_id = 2;
+  fixed32 service_id = 3;
+  fixed32 method_id = 4;
+  bytes payload = 5;
+  uint32 status = 6;
+  uint32 call_id = 7;
 }

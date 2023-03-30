@@ -25,8 +25,8 @@
 #include "ng.h"
 #include "common.h"
 
-/* DEFINE_FILL_WITH_ZEROS_FUNCTION(GrpcRequest_CS)
-DEFINE_FILL_WITH_ZEROS_FUNCTION(GrpcResponse_CS) */
+/* DEFINE_FILL_WITH_ZEROS_FUNCTION(RpcPacketRequest_CS)
+DEFINE_FILL_WITH_ZEROS_FUNCTION(RpcPacketResponse_CS) */
 
 /* This is only for holding methods, etc. It has to be reimplemented
 for client purposes. (temporary) */
@@ -97,8 +97,8 @@ void myGrpcInit(){
  */
 bool listdir(int fd, char *path)
 {
-    GrpcRequest_CS gRequest = GrpcRequest_CS_init_zero;
-    GrpcResponse_CS gResponse = GrpcResponse_CS_init_zero;
+    RpcPacketRequest_CS gRequest = RpcPacketRequest_CS_init_zero;
+    RpcPacketResponse_CS gResponse = RpcPacketResponse_CS_init_zero;
     bool validRequest;
     size_t requestSize;
     /* I will work here on pointer, because code will be moved later
@@ -117,15 +117,16 @@ bool listdir(int fd, char *path)
         strcpy(Path_holder.path, path);
 
 
-        gRequest.path_hash = 1575895564;
-        gRequest.data.funcs.encode = &encodeRequestCallback;
+        gRequest.type = PacketType_REQUEST;
+        gRequest.method_id = 1575895564;
+        gRequest.payload.funcs.encode = &encodeRequestCallback;
         ng_encodeMessageCallbackArgument_t arg;
         arg.method = &FileServer_ListFiles_method;
         arg.context = &context;
-        gRequest.data.arg = &arg;
+        gRequest.payload.arg = &arg;
 
         validRequest = pb_get_encoded_size(&requestSize,
-                                            GrpcRequest_CS_fields,
+                                            RpcPacketRequest_CS_fields,
                                             &gRequest);
 
         if (!validRequest){
@@ -135,7 +136,7 @@ bool listdir(int fd, char *path)
 
         /* Encode the request. It is written to the socket immediately
          * through our custom stream. */
-        if (!pb_encode_ex(&output, GrpcRequest_CS_fields, &gRequest, PB_ENCODE_NULLTERMINATED))
+        if (!pb_encode_ex(&output, RpcPacketRequest_CS_fields, &gRequest, PB_ENCODE_NULLTERMINATED))
         {
             fprintf(stderr, "Encoding failed: %s\n", PB_GET_ERROR(&output));
             return false;
@@ -149,7 +150,7 @@ bool listdir(int fd, char *path)
         /* Give a pointer to our callback function, which will handle the
          * filenames as they arrive. */
 
-        if (!pb_decode_ex(&istream, GrpcResponse_CS_fields, &gResponse, PB_DECODE_NULLTERMINATED))
+        if (!pb_decode_ex(&istream, RpcPacketResponse_CS_fields, &gResponse, PB_DECODE_NULLTERMINATED))
         {
             fprintf(stderr, "Decode failed: %s\n", PB_GET_ERROR(&istream));
             return false;
@@ -157,21 +158,21 @@ bool listdir(int fd, char *path)
 
         FileList_holder.file.funcs.decode = &printfile_callback;
 
-        if (gResponse.data == NULL){
+        if (gResponse.payload == NULL){
           fprintf(stderr, "no data\n");
           /*fprintf(stderr, "status: %d", gResponse.grpc_status);*/
-          pb_release(GrpcResponse_CS_fields, &gResponse);
+          pb_release(RpcPacketResponse_CS_fields, &gResponse);
           return false;
         }
-        pb_istream_t input = pb_istream_from_buffer(gResponse.data->bytes, gResponse.data->size);
+        pb_istream_t input = pb_istream_from_buffer(gResponse.payload->bytes, gResponse.payload->size);
 
         if (!pb_decode(&input, FileList_fields, &FileList_holder))
         {
             fprintf(stderr, "Decode response failed: %s\n", PB_GET_ERROR(&input));
-            pb_release(GrpcResponse_CS_fields, &gResponse);
+            pb_release(RpcPacketResponse_CS_fields, &gResponse);
             return false;
         }
-        pb_release(GrpcResponse_CS_fields, &gResponse);
+        pb_release(RpcPacketResponse_CS_fields, &gResponse);
 
         /* If the message from server decodes properly, but directory was
          * not found on server side, we get path_error == true. */

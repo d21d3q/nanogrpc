@@ -1235,6 +1235,7 @@ class Message(ProtoElement):
         self.math_include_required = False
         self.packed = message_options.packed_struct
         self.descriptorsize = message_options.descriptorsize
+        self.rpc_usage = False
 
         if message_options.msgid:
             self.msgid = message_options.msgid
@@ -1664,21 +1665,19 @@ class Method:
 
     def get_definition(self):
         result = ''
-        result += 'DEFINE_FILL_WITH_ZEROS_FUNCTION({})\n'.format(self.input)
-        result += 'DEFINE_FILL_WITH_ZEROS_FUNCTION({})\n'.format(self.output)
         result += '\n'
         result += 'ng_method_t {}_method = {{\n'.format(self.full_name)
-        result += '    "{}",\n'.format(self.name)                   # name
-        result += '    {},\n'.format(binascii.crc32(self.name.encode()))   # crc32 hash of path name
-        # result += '    NULL,\n'                                   # handler
-        result += '    NULL,\n'                                     # callback
-        # result += '    NULL,\n'                                   # request_holder
-        result += '    NULL,\n'                                     # context
-        result += '    {}_fields,\n'.format(self.input)             # request_fields
-        result += '    &FILL_WITH_ZEROS_FUNCTION_NAME({}),\n'.format(self.input) # request_fillWithZeros
-        # result += '    NULL,\n'                                   # response_holder
-        result += '    {}_fields,\n'.format(self.output)            # response_fields
-        result += '    &FILL_WITH_ZEROS_FUNCTION_NAME({}),\n'.format(self.output) # response_fillWithZeros
+        result += '    "{}",\n'.format(self.name)                                   # name
+        result += '    {},\n'.format(binascii.crc32(self.name.encode()))            # crc32 hash of method name
+        # result += '    NULL,\n'                                                   # handler
+        result += '    NULL,\n'                                                     # callback
+        # result += '    NULL,\n'                                                   # request_holder
+        result += '    NULL,\n'                                                     # context
+        result += '    {}_fields,\n'.format(self.input)                             # request_fields
+        result += '    &FILL_WITH_ZEROS_FUNCTION_NAME({}),\n'.format(self.input)    # request_fillWithZeros
+        # result += '    NULL,\n'                                                   # response_holder
+        result += '    {}_fields,\n'.format(self.output)                            # response_fields
+        result += '    &FILL_WITH_ZEROS_FUNCTION_NAME({}),\n'.format(self.output)   # response_fillWithZeros
 
         if self.server_streaming:
             result += '    true,\n'
@@ -1714,7 +1713,7 @@ class Service:
     def get_definition(self):
         result =  'ng_service_t {}_service = {{\n'.format(self.name)
         result += '    "{}",\n'.format(self.name)
-        result += '    0,\n'
+        result += '    {},\n'.format(binascii.crc32(self.name.encode()))            # crc32 hash of service name
         result += '    NULL,\n'
         result += '};'
         return result
@@ -1931,9 +1930,6 @@ class ProtoFile:
             enum_path = (ProtoElement.ENUM, index)
             self.enums.append(Enum(name, enum, enum_options, enum_path, self.comment_locations))
 
-        for names, service in iterate_services(self.fdesc, self.manglenames.flatten):
-            self.services.append(Service(names, service, service_options=None))
-
         for names, message, comment_path in iterate_messages(self.fdesc, self.manglenames.flatten):
             name = self.manglenames.create_name(names)
             message_options = get_nanopb_suboptions(message, self.file_options, name)
@@ -1963,6 +1959,17 @@ class ProtoFile:
 
             if field_options.type != nanopb_pb2.FT_IGNORE:
                 self.extensions.append(ExtensionField(name, extension, field_options))
+
+        for names, service in iterate_services(self.fdesc, self.manglenames.flatten):
+            new_service = Service(names, service, service_options=None)
+            self.services.append(new_service)
+            for method in new_service.get_methods():
+                input_name = method.input
+                output_name = method.output
+                for message in self.messages:
+                    if (message.name == input_name or message.name == output_name):
+                        message.rpc_usage = True
+
 
     def add_dependency(self, other):
         for enum in other.enums:
@@ -2258,6 +2265,8 @@ class ProtoFile:
         # Generate the message field definitions (PB_BIND() call)
         for msg in self.messages:
             yield msg.fields_definition(self.dependencies) + '\n\n'
+            if (msg.rpc_usage == True):
+                yield 'DEFINE_FILL_WITH_ZEROS_FUNCTION({})\n'.format(msg.name)
 
         # Generate pb_extension_type_t definitions if extensions are used in proto file
         for ext in self.extensions:
