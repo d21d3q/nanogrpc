@@ -1,0 +1,5 @@
+syntax = "proto3";
+
+message Blob {
+  bytes blobData = 1;
+}

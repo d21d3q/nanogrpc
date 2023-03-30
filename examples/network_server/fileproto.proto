@@ -4,10 +4,13 @@
 
 syntax = "proto3";
 
+import "otherproto.proto";
+
 service FileServer {
   rpc ListFiles (Path) returns (FileList);
   rpc SendFile (File) returns (IOResult);
   rpc GetFile(Path) returns (File);
+  rpc GetBlob(Path) returns (Blob);
 }
 
 message File {

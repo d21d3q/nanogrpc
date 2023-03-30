@@ -1665,6 +1665,14 @@ class Method:
 
     def get_definition(self):
         result = ''
+        result += '#ifndef {}_FILL_WITH_ZEROS\n'.format(self.input)
+        result += '#define {}_FILL_WITH_ZEROS\n'.format(self.input)
+        result += 'DEFINE_FILL_WITH_ZEROS_FUNCTION({})\n'.format(self.input)
+        result += '#endif\n'
+        result += '#ifndef {}_FILL_WITH_ZEROS\n'.format(self.output)
+        result += '#define {}_FILL_WITH_ZEROS\n'.format(self.output)
+        result += 'DEFINE_FILL_WITH_ZEROS_FUNCTION({})\n'.format(self.output)
+        result += '#endif\n'
         result += '\n'
         result += 'ng_method_t {}_method = {{\n'.format(self.full_name)
         result += '    "{}",\n'.format(self.name)                                   # name
@@ -1963,12 +1971,6 @@ class ProtoFile:
         for names, service in iterate_services(self.fdesc, self.manglenames.flatten):
             new_service = Service(names, service, service_options=None)
             self.services.append(new_service)
-            for method in new_service.get_methods():
-                input_name = method.input
-                output_name = method.output
-                for message in self.messages:
-                    if (message.name == input_name or message.name == output_name):
-                        message.rpc_usage = True
 
 
     def add_dependency(self, other):
@@ -2265,8 +2267,6 @@ class ProtoFile:
         # Generate the message field definitions (PB_BIND() call)
         for msg in self.messages:
             yield msg.fields_definition(self.dependencies) + '\n\n'
-            if (msg.rpc_usage == True):
-                yield 'DEFINE_FILL_WITH_ZEROS_FUNCTION({})\n'.format(msg.name)
 
         # Generate pb_extension_type_t definitions if extensions are used in proto file
         for ext in self.extensions:
