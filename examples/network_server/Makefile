@@ -58,7 +58,7 @@ vpath %.options $(abspath ../../)
 .PHONY: all
 all: server client
 
-% : %.c common.c fileproto.pb.c nanogrpc.pb.c
+% : %.c common.c otherproto.pb.c fileproto.pb.c nanogrpc.pb.c
 	echo $@
 	$(CC) $(CFLAGS) -o $@ $^ $(NANOPB_CORE) $(NANOGRPC_CORE)
 
