@@ -19,6 +19,7 @@
 typedef uint32_t ng_hash_t;
 typedef uint32_t ng_GrpcStatus_t;
 typedef uint32_t ng_callId_t;
+typedef uint32_t ng_channelId_t;
 
 typedef enum _CallbackStatus {
   CallbackStatus_Ok, /*!< If streamin callback returns it, Response will have Enf of Call set */
@@ -71,6 +72,7 @@ struct ng_methodContext_s {
   void* request;
   void* response;
   ng_callId_t call_id;
+  ng_channelId_t channel_id;
   ng_method_t* method;
   ng_methodContext_t* next;
 };
@@ -106,6 +108,7 @@ struct ng_service_s {
 typedef struct ng_call_s ng_call_t;
 struct ng_call_s{
   ng_callId_t call_id;
+  ng_channelId_t channel_id;
   ng_methodContext_t * context;
   /* Some timeout related data? */
 };

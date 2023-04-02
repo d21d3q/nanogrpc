@@ -294,14 +294,15 @@ bool ng_GrpcRegisterService(ng_grpc_handle_t *handle, ng_service_t * service){
  * @param  call_id id of current call
  * @return        true if managed to register call, false otherwise
  */
-static bool ng_registerCall(ng_grpc_handle_t *handle, ng_methodContext_t *ctx, ng_callId_t id){
+static bool ng_registerCall(ng_grpc_handle_t *handle, ng_methodContext_t *ctx, ng_callId_t id, ng_channelId_t channel_id){
   uint32_t i;
   if (handle->callsHolder == NULL){
     return false;
   }
   for (i=0; i< handle->callsHolderSize; i++){
-    if (handle->callsHolder[i].call_id == 0){
+    if (handle->callsHolder[i].call_id == 0 && handle->callsHolder[i].channel_id == 0){
       handle->callsHolder[i].call_id = id;
+      handle->callsHolder[i].channel_id = channel_id;
       handle->callsHolder[i].context = ctx;
       return true;
     }
@@ -310,15 +311,16 @@ static bool ng_registerCall(ng_grpc_handle_t *handle, ng_methodContext_t *ctx, n
 }
 
 
-static bool ng_removeCall(ng_grpc_handle_t *handle, ng_callId_t id){
+static bool ng_removeCall(ng_grpc_handle_t *handle, ng_callId_t id, ng_channelId_t channel_id){
   uint32_t i;
   if (id == 0){
     return false;
   }
 
   for (i=0; i< handle->callsHolderSize; i++){
-    if (handle->callsHolder[i].call_id == id){
+    if (handle->callsHolder[i].call_id == id && handle->callsHolder[i].channel_id == channel_id){
       handle->callsHolder[i].call_id = 0;
+      handle->callsHolder[i].channel_id = 0;
       handle->callsHolder[i].context = NULL;
       return true;
     }
@@ -333,6 +335,7 @@ bool ng_isContextUsedByOngoingCall(ng_grpc_handle_t* handle, ng_methodContext_t*
   }
   for (i=0; i< handle->callsHolderSize; i++){
     if (handle->callsHolder[i].call_id != 0 &&
+        handle->callsHolder[i].channel_id != 0 &&
         handle->callsHolder[i].context == ctx){
       return true;
     }
@@ -364,7 +367,7 @@ static ng_methodContext_t* ng_getValidContext(ng_grpc_handle_t* handle, ng_metho
       /* We could chekc if context is not being used by some call,
          but let's remove it. Removeing call with id = 0 won't do anyhing.
          just return false, but that's fine. */
-      ng_removeCall(handle, method->context->call_id);
+      ng_removeCall(handle, method->context->call_id, method->context->channel_id);
       /*method->context->method = method; */ /* moved to ng_setMethodContext */
     	return method->context;
     }
@@ -393,6 +396,7 @@ bool ng_GrpcParseNonBlocking(ng_grpc_handle_t* handle){
 
   if (pb_decode(handle->input, RpcPacketRequest_fields, &handle->request)){
     ng_callId_t call_id = handle->response.call_id = handle->request.call_id;
+    ng_channelId_t channel_id = handle->response.channel_id = handle->request.channel_id;
     pb_istream_t input = pb_istream_from_buffer(handle->request.payload->bytes, handle->request.payload->size);
 
     /* look for method by hash only if it has been provided */
@@ -410,10 +414,11 @@ bool ng_GrpcParseNonBlocking(ng_grpc_handle_t* handle){
                                   in case of creating contexts dynamically we should
                                   not bother here about setting it. Lets just obtain
                                   valid context for method? */
-          if (ng_registerCall(handle, ctx, call_id)){
+          if (ng_registerCall(handle, ctx, call_id, channel_id)){
             method->request_fillWithZeros(ctx->request);
             if (pb_decode(&input, method->request_fields, ctx->request)){
               ctx->call_id = call_id;
+              ctx->channel_id = channel_id;
               method->response_fillWithZeros(ctx->response);
               status = method->callback(ctx);
 
@@ -439,24 +444,24 @@ bool ng_GrpcParseNonBlocking(ng_grpc_handle_t* handle){
                 }
                 if (status == CallbackStatus_Ok || method->server_streaming == false){
                   handle->response.type = PacketType_RESPONSE;
-                  ng_removeCall(handle, call_id);
+                  ng_removeCall(handle, call_id, channel_id);
                 }
               } else if (status == CallbackStatus_WillRespondLater){
                 sendNow = false;
               } else { /* callback failed. */
                 handle->response.type = PacketType_SERVER_ERROR;
-                handle->response.status = GrpcStatus_INTERNAL | (GrpcErrorMsg_callback_failed >> 8);
+                handle->response.status = GrpcStatus_INTERNAL;
               }
            } else { /* unable to decode message from request holder */
               /* We registered it previously but since decoding failed
                  we have to remove it since we won't be able to respond */
-              ng_removeCall(handle, call_id);
+              ng_removeCall(handle, call_id, channel_id);
               handle->response.type = PacketType_SERVER_ERROR;
-              handle->response.status = GrpcStatus_INVALID_ARGUMENT | (GrpcErrorMsg_unable_to_decode_message >> 8);
+              handle->response.status = GrpcStatus_INVALID_ARGUMENT;
             }
           } else { /* Unable to register call */
             handle->response.type = PacketType_SERVER_ERROR;
-            handle->response.status = GrpcStatus_INTERNAL | (GrpcErrorMsg_unable_to_register_call >> 8);
+            handle->response.status = GrpcStatus_INTERNAL;
           }
         } else { /* no available context */
           handle->response.type = PacketType_SERVER_ERROR;
@@ -590,7 +595,7 @@ bool ng_AsyncResponse(ng_grpc_handle_t *handle, ng_methodContext_t* ctx, bool en
       }
     }
     #endif
-    ng_removeCall(handle, ctx->call_id);
+    ng_removeCall(handle, ctx->call_id, ctx->channel_id);
   }
 
   #ifdef PB_ENABLE_MALLOC
@@ -632,7 +637,7 @@ bool ng_endOfCall(ng_grpc_handle_t* handle, ng_methodContext_t* ctx){
   if (handle->outputReady != NULL){
     handle->outputReady(handle);
   }
-  ng_removeCall(handle, ctx->call_id);
+  ng_removeCall(handle, ctx->call_id, ctx->channel_id);
   #ifdef PB_ENABLE_MALLOC
   if (ctx != NULL){
     /* In case response would have dynamically allocated fields */
