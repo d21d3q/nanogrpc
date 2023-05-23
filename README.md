@@ -43,13 +43,8 @@ Synchronous usage can be implemented over
 [modbus](https://en.wikipedia.org/wiki/Modbus) using other command (0x43)
 
 ## Path to methods
-GRPC identifies methods by paths, which are basically strings.
-In order to reduce traffic on serial line (which in real world might be very
-  slow)
-there is option of identifying method by hash of path, which could be for
-example CRC32 from path. For now in `nanogrpc.proto` field `name_crc` is marked
-required, because for now `nanopb` doesn't allow to use `oneOf`'s with
-dynamically allocated memory.
+Paths to methods are effectively always hashed with a CRC32 in the current implementation to save bytes.
+If collisions are expected, one could also enforced service hashes as well.
 
 ### Method naming
 Different services may have methods with same names, but they won't be the same

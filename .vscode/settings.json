@@ -2,7 +2,8 @@
   "files.associations": {
     "*.c": "c",
     "ng.h": "c",
-    "nanogrpc.pb.h": "c"
+    "nanogrpc.pb.h": "c",
+    "ranlib.h": "c"
   },
   "makefile.makefilePath": "examples/network_server/Makefile",
   "makefile.configurations": [{

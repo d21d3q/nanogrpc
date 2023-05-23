@@ -24,96 +24,91 @@
 #include "fileproto.pb.h"
 #include "common.h"
 
+#define MAX_CHUNK_SIZE 4096
+#define MIN_DELAY_MICROSECONDS 10000
+
 ng_grpc_handle_t hGrpc;
-Path Path_holder;
-FileList FileList_holder;
+
+Chunk requestChunk_holder;
+Chunk responseChunk_holder;
+
 pb_istream_t istream;
 pb_ostream_t ostream;
 ng_methodContext_t context;
 
-/* This callback function will be called once during the encoding.
- * It will write out any number of FileInfo entries, without consuming unnecessary memory.
- * This is accomplished by fetching the filenames one at a time and encoding them
- * immediately.
- */
-bool listdir_callback(pb_ostream_t *stream, const pb_field_t *field, void * const *arg)
-{
-    /* DIR *dir = (DIR*) *arg; */
-    char * path = (char *)*arg;
-    DIR *dir = NULL;
-    printf("list dir callback! opendir");
-    dir = opendir(path);
-    struct dirent *file;
-    FileInfo fileinfo = {};
-    if (dir != NULL){
-      printf("list dir callback! dir: %d\n", (uint32_t)(uint64_t)readdir(dir));
-      while ((file = readdir(dir)) != NULL)
-      {
-          /* printf("file: %s\n", file->d_name); */
-          fileinfo.inode = file->d_ino;
-          strncpy(fileinfo.name, file->d_name, sizeof(fileinfo.name));
-          fileinfo.name[sizeof(fileinfo.name) - 1] = '\0';
-          /* This encodes the header for the field, based on the constant info
-           * from pb_field_t. */
-          if (!pb_encode_tag_for_field(stream, field)){
-              printf("encode tag failed: %s\n", stream->errmsg);
-              return false;
-            }
+uint32_t currentSessionId = 0;
+uint32_t currentTransferringResource = 0;
 
-          /* This encodes the data for the field, based on our FileInfo structure. */
-          if (!pb_encode_submessage(stream, FileInfo_fields, &fileinfo)){
-              printf("encode submessage failed: %s\n", stream->errmsg);
-              return false;
-            }
-      }
-      closedir(dir);
-    }
-    return true;
+uint8_t chunkBuffer[MAX_CHUNK_SIZE];
+uint8_t fileBuffer[MAX_CHUNK_SIZE * 4];
+
+
+bool Transfer_Write_data_callback(pb_istream_t *stream, const pb_field_t *field, void **arg)
+{
+  if (stream->bytes_left > MAX_CHUNK_SIZE) {
+    return false;
+  }
+
+  pb_read(stream, chunkBuffer, stream->bytes_left);
+  return true;
 }
 
+ng_CallbackStatus_t Transfer_Write_methodCallback(ng_methodContext_t *context)
+{
+  printf("hello!");
+  Chunk *request = (Chunk *)context->request;
+  Chunk *response = (Chunk *)context->response;
 
-ng_CallbackStatus_t FileServer_service_methodCallback(ng_methodContext_t* ctx){
-    Path * request = (Path*)ctx->request;
-    FileList * response = (FileList*)ctx->response;
-    DIR *directory = NULL;
-    printf("Opening directory: %s directory %d\n", request->path, (uint32_t)(uint64_t)directory);
-    directory = opendir(request->path);
+  if (request->type == Chunk_Type_START) {
 
-    if (directory == NULL)
-    {
-        perror("opendir");
-
-        /* Directory was not found, transmit error status */
-        response->path_error = true;
-        response->file.funcs.encode = NULL;
-    }
-    else
-    {
-        /* Directory was found, transmit filenames */
-        response->file.funcs.encode = &listdir_callback;
-        response->file.arg = &request->path;
+    /* If the client is requesting a new session, but haven't specified a
+     * session ID, we should fail.
+     */
+    if (!request->has_desired_session_id) {
+      return CallbackStatus_Failed;
     }
 
-    if (directory != NULL)
-        closedir(directory);
+    response->type = Chunk_Type_START_ACK;
+    response->has_session_id = true;
+    response->session_id = request->desired_session_id;
+    response->offset = 0;
+    response->window_end_offset = MAX_CHUNK_SIZE;
+    response->has_max_chunk_size_bytes = true;
+    response->max_chunk_size_bytes = MAX_CHUNK_SIZE;
+    response->has_min_delay_microseconds = true;
+    response->min_delay_microseconds = MIN_DELAY_MICROSECONDS;
+
+    currentSessionId = response->session_id;
+  } else if (request->type == Chunk_Type_DATA) {
+
+    /*if (request->session_id != currentSessionId) {
+      return CallbackStatus_Failed;
+    }*/
+
+    /* Copy data from the chunk buffer to the file buffer. */
+    memcpy(fileBuffer + request->offset, request->data.bytes, request->data.size);
+
+    response->type = Chunk_Type_PARAMETERS_CONTINUE;
+    response->session_id = request->session_id;
+    response->offset = request->offset + request->window_end_offset;
+    response->window_end_offset = response->offset + MAX_CHUNK_SIZE;
+  }
 
   return CallbackStatus_Ok;
-}
+};
 
-
-void myGrpcInit(){
-  FileServer_service_init();
+void myGrpcInit()
+{
+  Transfer_service_init();
   /* ng_setMethodHandler(&SayHello_method, &Greeter_methodHandler);*/
-  context.request = (void*)&Path_holder;
-  context.response = (void*)&FileList_holder;
-  ng_setMethodContext(&FileServer_ListFiles_method, &context);
-  ng_setMethodCallback(&FileServer_ListFiles_method, (void *)&FileServer_service_methodCallback);
-  ng_GrpcRegisterService(&hGrpc, &FileServer_service);
+  context.request = (void *)&requestChunk_holder;
+  context.response = (void *)&responseChunk_holder;
+  ng_setMethodContext(&Transfer_Write_method, &context);
+  ng_setMethodCallback(&Transfer_Write_method, (void *)&Transfer_Write_methodCallback);
+  ng_GrpcRegisterService(&hGrpc, &Transfer_service);
   hGrpc.input = &istream;
   hGrpc.output = &ostream;
 }
-
-
 
 /* Handle one arriving client connection.
  * Clients are expected to send a ListFilesRequest, terminated by a '0'.
@@ -128,49 +123,49 @@ void handle_connection(int connfd)
 
 int main(int argc, char **argv)
 {
-    int listenfd, connfd;
-    struct sockaddr_in servaddr;
-    int reuse = 1;
-    myGrpcInit();
+  int listenfd, connfd;
+  struct sockaddr_in servaddr;
+  int reuse = 1;
+  myGrpcInit();
 
-    /* Listen on localhost:1234 for TCP connections */
-    listenfd = socket(AF_INET, SOCK_STREAM, 0);
-    setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+  /* Listen on localhost:1234 for TCP connections */
+  listenfd = socket(AF_INET, SOCK_STREAM, 0);
+  setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
 
-    memset(&servaddr, 0, sizeof(servaddr));
-    servaddr.sin_family = AF_INET;
-    servaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    servaddr.sin_port = htons(1234);
-    if (bind(listenfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) != 0)
+  memset(&servaddr, 0, sizeof(servaddr));
+  servaddr.sin_family = AF_INET;
+  servaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  servaddr.sin_port = htons(1234);
+  if (bind(listenfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) != 0)
+  {
+    perror("bind");
+    return 1;
+  }
+  if (listen(listenfd, 5) != 0)
+  {
+    perror("listen");
+    return 1;
+  }
+
+  for (;;)
+  {
+    /* Wait for a client */
+    connfd = accept(listenfd, NULL, NULL);
+
+    if (connfd < 0)
     {
-        perror("bind");
-        return 1;
-    }
-    if (listen(listenfd, 5) != 0)
-    {
-        perror("listen");
-        return 1;
-    }
-
-    for(;;)
-    {
-        /* Wait for a client */
-        connfd = accept(listenfd, NULL, NULL);
-
-        if (connfd < 0)
-        {
-            perror("accept");
-            return 1;
-        }
-
-        printf("Got connection.\n");
-
-        handle_connection(connfd);
-
-        printf("Closing connection.\n");
-
-        close(connfd);
+      perror("accept");
+      return 1;
     }
 
-    return 0;
+    printf("Got connection.\n");
+
+    handle_connection(connfd);
+
+    printf("Closing connection.\n");
+
+    close(connfd);
+  }
+
+  return 0;
 }

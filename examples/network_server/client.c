@@ -11,6 +11,7 @@
 
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/random.h>
 #include <netinet/in.h>
 #include <unistd.h>
 #include <dirent.h>
@@ -31,23 +32,18 @@ DEFINE_FILL_WITH_ZEROS_FUNCTION(RpcPacketResponse_CS) */
 /* This is only for holding methods, etc. It has to be reimplemented
 for client purposes. (temporary) */
 ng_grpc_handle_t hGrpc;
-Path Path_holder;
-FileList FileList_holder;
+Chunk requestChunk_holder;
+Chunk responseChunk_holder;
 ng_methodContext_t context;
 /* pb_istream_t istream;
 pb_ostream_t ostream; */
 
-/**
- * Encodes request into stream. This function will be moved intofile
- * containing client functions.
- * @param  stream [description]
- * @param  field  [description]
- * @param  arg    [description]
- * @return        [description]
- */
+uint8_t dummyFileBuffer[4096 * 4] = {0x55};
+
 bool encodeRequestCallback(pb_ostream_t *stream, const pb_field_t *field, void * const *arg)
 {
   ng_encodeMessageCallbackArgument_t *argument = (ng_encodeMessageCallbackArgument_t*)*arg;
+  
   /* char *str = get_string_from_somewhere(); */
   if (!pb_encode_tag_for_field(stream, field))
       return false;
@@ -58,23 +54,6 @@ bool encodeRequestCallback(pb_ostream_t *stream, const pb_field_t *field, void *
 }
 
 
-/* This callback function will be called once for each filename received
- * from the server. The filenames will be printed out immediately, so that
- * no memory has to be allocated for them.
- */
-bool printfile_callback(pb_istream_t *stream, const pb_field_t *field, void **arg)
-{
-    FileInfo fileinfo = {};
-
-    if (!pb_decode(stream, FileInfo_fields, &fileinfo))
-        return false;
-
-    printf("%-10lld %s\n", (long long)fileinfo.inode, fileinfo.name);
-
-    return true;
-}
-
-
 void dummyCallback(void * a, void *b){
 
 }
@@ -82,107 +61,107 @@ void dummyCallback(void * a, void *b){
 void myGrpcInit(){
   /* FileServer_service_init(); */
   /* ng_setMethodHandler(&SayHello_method, &Greeter_methodHandler);*/
-  context.request = (void *)&Path_holder;
-  context.response = &FileList_holder;
-  ng_setMethodContext(&FileServer_ListFiles_method, &context);
-  ng_setMethodCallback(&FileServer_ListFiles_method, (void *)&dummyCallback);
+  context.request = (void *)&requestChunk_holder;
+  context.response = &responseChunk_holder;
+  ng_setMethodContext(&Transfer_Write_method, &context);
+  ng_setMethodCallback(&Transfer_Write_method, (void *)&dummyCallback);
   /* ng_GrpcRegisterService(&hGrpc, &FileServer_service); */
   /* hGrpc.input = &istream;
   hGrpc.output = &ostream; */
 }
 
-/* This function sends a request to socket 'fd' to list the files in
- * directory given in 'path'. The results received from server will
- * be printed to stdout.
- */
-bool listdir(int fd, char *path)
-{
+void setupTransferStart(Chunk *chunk) {
+    chunk->type = Chunk_Type_START;
+    chunk->has_desired_session_id = true;
+    chunk->desired_session_id = 4455;
+}
+
+bool sendFile(int fd, char *path) {
     RpcPacketRequest_CS gRequest = RpcPacketRequest_CS_init_zero;
     RpcPacketResponse_CS gResponse = RpcPacketResponse_CS_init_zero;
     bool validRequest;
     size_t requestSize;
-    /* I will work here on pointer, because code will be moved later
-    to library files */
-    /*ng_method_t *method = &FileServer_ListFiles_method;*/
-    /* Construct and send the request to server */
-    {
-        pb_ostream_t output = pb_ostream_from_socket(fd);
 
-        if (strlen(path) + 1 > sizeof(Path_holder.path))
-        {
-            fprintf(stderr, "Too long Path_holder.\n");
-            return false;
-        }
+    /* Setup streams */
+    pb_ostream_t output = pb_ostream_from_socket(fd);
 
-        strcpy(Path_holder.path, path);
+    /* General request setup */
+    gRequest.type = PacketType_REQUEST;
+    gRequest.method_id = 3165279579;
+    gRequest.payload.funcs.encode = &encodeRequestCallback;
+    ng_encodeMessageCallbackArgument_t arg;
+    arg.method = &Transfer_Write_method;
+    arg.context = &context;
+    gRequest.payload.arg = &arg;
 
+    validRequest = pb_get_encoded_size(&requestSize, RpcPacketRequest_CS_fields, &gRequest);
 
-        gRequest.type = PacketType_REQUEST;
-        gRequest.method_id = 1575895564;
-        gRequest.payload.funcs.encode = &encodeRequestCallback;
-        ng_encodeMessageCallbackArgument_t arg;
-        arg.method = &FileServer_ListFiles_method;
-        arg.context = &context;
-        gRequest.payload.arg = &arg;
-
-        validRequest = pb_get_encoded_size(&requestSize,
-                                            RpcPacketRequest_CS_fields,
-                                            &gRequest);
-
-        if (!validRequest){
-          fprintf(stderr, "Request not vlalid: %s\n", PB_GET_ERROR(&output));
-          return false;
-        }
-
-        /* Encode the request. It is written to the socket immediately
-         * through our custom stream. */
-        if (!pb_encode_ex(&output, RpcPacketRequest_CS_fields, &gRequest, PB_ENCODE_NULLTERMINATED))
-        {
-            fprintf(stderr, "Encoding failed: %s\n", PB_GET_ERROR(&output));
-            return false;
-        }
+    if (!validRequest) {
+        printf("Invalid request\n");
+        return false;
     }
 
-    /* Read back the response from server */
+    setupTransferStart(context.request);
+
+    /* Encode the request. It is written to the socket immediately
+        * through our custom stream. */
+    if (!pb_encode_ex(&output, RpcPacketRequest_CS_fields, &gRequest, PB_ENCODE_NULLTERMINATED))
     {
-        pb_istream_t istream = pb_istream_from_socket(fd);
+        fprintf(stderr, "Encoding failed: %s\n", PB_GET_ERROR(&output));
+        return false;
+    }
 
-        /* Give a pointer to our callback function, which will handle the
-         * filenames as they arrive. */
+    pb_istream_t istream = pb_istream_from_socket(fd);
 
-        if (!pb_decode_ex(&istream, RpcPacketResponse_CS_fields, &gResponse, PB_DECODE_NULLTERMINATED))
-        {
-            fprintf(stderr, "Decode failed: %s\n", PB_GET_ERROR(&istream));
-            return false;
-        }
+    /* Receive response */
+    if (!pb_decode_ex(&istream, RpcPacketResponse_CS_fields, &gResponse, PB_ENCODE_NULLTERMINATED)) {
+        printf("Error: %s\n", PB_GET_ERROR(&istream));
+        return false;
+    }
 
-        FileList_holder.file.funcs.decode = &printfile_callback;
-
-        if (gResponse.payload == NULL){
-          fprintf(stderr, "no data\n");
-          /*fprintf(stderr, "status: %d", gResponse.grpc_status);*/
-          pb_release(RpcPacketResponse_CS_fields, &gResponse);
-          return false;
-        }
-        pb_istream_t input = pb_istream_from_buffer(gResponse.payload->bytes, gResponse.payload->size);
-
-        if (!pb_decode(&input, FileList_fields, &FileList_holder))
-        {
-            fprintf(stderr, "Decode response failed: %s\n", PB_GET_ERROR(&input));
-            pb_release(RpcPacketResponse_CS_fields, &gResponse);
-            return false;
-        }
+    if (gResponse.payload == NULL){
+        fprintf(stderr, "no data\n");
+        /*fprintf(stderr, "status: %d", gResponse.grpc_status);*/
         pb_release(RpcPacketResponse_CS_fields, &gResponse);
-
-        /* If the message from server decodes properly, but directory was
-         * not found on server side, we get path_error == true. */
-        if (FileList_holder.path_error)
-        {
-            fprintf(stderr, "Server reported error.\n");
-            return false;
-        }
-
+        return false;
     }
+
+    pb_istream_t input = pb_istream_from_buffer(gResponse.payload->bytes, gResponse.payload->size);
+
+    if (!pb_decode(&input, Chunk_fields, &responseChunk_holder))
+    {
+        fprintf(stderr, "Decode response failed: %s\n", PB_GET_ERROR(&input));
+        pb_release(RpcPacketResponse_CS_fields, &gResponse);
+        return false;
+    }
+    pb_release(RpcPacketResponse_CS_fields, &gResponse);
+
+    if (responseChunk_holder.type != Chunk_Type_START_ACK) {
+        fprintf(stderr, "Invalid response type\n");
+        return false;
+    }
+
+    size_t currentPointer = 0;
+
+    int i;
+    for (i = 0; i < 4; i++) {
+        requestChunk_holder.type = Chunk_Type_DATA;
+        requestChunk_holder.offset = responseChunk_holder.offset;
+        
+        memcpy(requestChunk_holder.data.bytes, dummyFileBuffer + currentPointer, 4096);
+        requestChunk_holder.data.size = 4096;
+
+        pb_encode_ex(&output, RpcPacketRequest_CS_fields, &gRequest, PB_ENCODE_NULLTERMINATED);
+
+        istream = pb_istream_from_socket(fd);
+
+        pb_decode_ex(&istream, RpcPacketResponse_CS_fields, &gResponse, PB_ENCODE_NULLTERMINATED);
+        pb_decode(&input, Chunk_fields, &responseChunk_holder);
+        
+        printf("offset: %llu\n", responseChunk_holder.offset);
+        currentPointer = responseChunk_holder.offset;
+    }
+
 
     return true;
 }
@@ -210,8 +189,10 @@ int main(int argc, char **argv)
         return 1;
     }
     myGrpcInit();
-    /* Send the directory listing request */
-    if (!listdir(sockfd, path))
+
+    memset(dummyFileBuffer, 'a', 4096 * 4);
+
+    if (!sendFile(sockfd, path))
         return 2;
 
     /* Close connection */
