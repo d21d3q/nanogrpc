@@ -9,6 +9,8 @@
  * a communication and filesystem layer.
  */
 
+#undef PB_ENABLE_MALLOC
+
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/random.h>
@@ -62,7 +64,7 @@ void myGrpcInit(){
   /* FileServer_service_init(); */
   /* ng_setMethodHandler(&SayHello_method, &Greeter_methodHandler);*/
   context.request = (void *)&requestChunk_holder;
-  context.response = &responseChunk_holder;
+  context.response = (void *)&responseChunk_holder;
   ng_setMethodContext(&Transfer_Write_method, &context);
   ng_setMethodCallback(&Transfer_Write_method, (void *)&dummyCallback);
   /* ng_GrpcRegisterService(&hGrpc, &FileServer_service); */
@@ -134,7 +136,7 @@ bool sendFile(int fd, char *path) {
         pb_release(RpcPacketResponse_CS_fields, &gResponse);
         return false;
     }
-    pb_release(RpcPacketResponse_CS_fields, &gResponse);
+    /* pb_release(RpcPacketResponse_CS_fields, &gResponse); */
 
     if (responseChunk_holder.type != Chunk_Type_START_ACK) {
         fprintf(stderr, "Invalid response type\n");
@@ -148,15 +150,22 @@ bool sendFile(int fd, char *path) {
         requestChunk_holder.type = Chunk_Type_DATA;
         requestChunk_holder.offset = responseChunk_holder.offset;
         
-        memcpy(requestChunk_holder.data.bytes, dummyFileBuffer + currentPointer, 4096);
+        memset(requestChunk_holder.data.bytes, 0xAA + currentPointer / 4096, 4096);
         requestChunk_holder.data.size = 4096;
+        requestChunk_holder.has_session_id = true;
+        requestChunk_holder.session_id = responseChunk_holder.session_id;
 
         pb_encode_ex(&output, RpcPacketRequest_CS_fields, &gRequest, PB_ENCODE_NULLTERMINATED);
 
-        istream = pb_istream_from_socket(fd);
+        istream.bytes_left = SIZE_MAX;
 
-        pb_decode_ex(&istream, RpcPacketResponse_CS_fields, &gResponse, PB_ENCODE_NULLTERMINATED);
-        pb_decode(&input, Chunk_fields, &responseChunk_holder);
+        bool didDecodePackage = pb_decode_ex(&istream, RpcPacketResponse_CS_fields, &gResponse, PB_ENCODE_NULLTERMINATED);
+
+        input = pb_istream_from_buffer(gResponse.payload->bytes, gResponse.payload->size);
+
+        bool didDecodePayload = pb_decode(&input, Chunk_fields, &responseChunk_holder);
+
+        printf("didDecodePackage: %d didDecodePayload: %d\n", didDecodePackage, didDecodePayload);
         
         printf("offset: %llu\n", responseChunk_holder.offset);
         currentPointer = responseChunk_holder.offset;

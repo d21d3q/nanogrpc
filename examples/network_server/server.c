@@ -55,7 +55,6 @@ bool Transfer_Write_data_callback(pb_istream_t *stream, const pb_field_t *field,
 
 ng_CallbackStatus_t Transfer_Write_methodCallback(ng_methodContext_t *context)
 {
-  printf("hello!");
   Chunk *request = (Chunk *)context->request;
   Chunk *response = (Chunk *)context->response;
 
@@ -81,16 +80,18 @@ ng_CallbackStatus_t Transfer_Write_methodCallback(ng_methodContext_t *context)
     currentSessionId = response->session_id;
   } else if (request->type == Chunk_Type_DATA) {
 
-    /*if (request->session_id != currentSessionId) {
+    if (request->session_id != currentSessionId) {
       return CallbackStatus_Failed;
-    }*/
+    }
 
     /* Copy data from the chunk buffer to the file buffer. */
+    printf("offset: %llu size: %d", request->offset, request->data.size);
     memcpy(fileBuffer + request->offset, request->data.bytes, request->data.size);
 
     response->type = Chunk_Type_PARAMETERS_CONTINUE;
+    response->has_session_id = true;
     response->session_id = request->session_id;
-    response->offset = request->offset + request->window_end_offset;
+    response->offset = request->offset + MAX_CHUNK_SIZE;
     response->window_end_offset = response->offset + MAX_CHUNK_SIZE;
   }
 
@@ -160,7 +161,9 @@ int main(int argc, char **argv)
 
     printf("Got connection.\n");
 
-    handle_connection(connfd);
+    while(connfd > 0) {
+      handle_connection(connfd);
+    }
 
     printf("Closing connection.\n");
 
