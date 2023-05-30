@@ -1,0 +1,18 @@
+{
+  "name": "nanogrpc",
+  "version": "0.0.1",
+  "main": "index.js",
+  "repository": "git@github.com:DaBs/nanogrpc.git",
+  "author": "David Alexander Bjerremose <dab@davidbjerremose.com>",
+  "license": "MIT",
+  "scripts": {
+    "proto:generate:js": "npx pbjs -t static-module -o ./examples/network_server/fileproto.js --es6 ./examples/network_server/fileproto.proto",
+    "proto:generate:ts": "npx pbts -o ./examples/network_server/fileproto.d.ts ./examples/network_server/fileproto.js",
+    "proto:generate": "npm run proto:generate:js && npm run proto:generate:ts"
+  },
+  "devDependencies": {
+    "protobufjs": "^7.2.3",
+    "protobufjs-cli": "^1.1.1",
+    "ts-proto": "^1.135.3"
+  }
+}

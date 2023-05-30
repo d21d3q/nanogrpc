@@ -31,3 +31,8 @@ generator/nanopb_pb2.pyc
 *.ng.c
 nanogrpc/examples/network_server/client
 nanogrpc/examples/network_server/server
+
+
+# Node client ignores
+node_modules
+yarn-error.log

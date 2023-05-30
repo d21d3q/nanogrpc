@@ -1,0 +1,1 @@
+import { RPCImpl } from 'protobufjs';
