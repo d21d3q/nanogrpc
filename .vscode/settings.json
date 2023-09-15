@@ -21,7 +21,8 @@
     "random": "c",
     "string_view": "c",
     "socket.h": "c",
-    "pb.h": "c"
+    "pb.h": "c",
+    "cstdint": "c"
   },
   "makefile.makefilePath": "examples/network_server/Makefile",
   "makefile.configurations": [{

@@ -118,7 +118,7 @@ bool ng_GrpcParseBlocking(ng_grpc_handle_t *handle){
         ctx = method->context;
         ctx->method = method;
         method->request_fillWithZeros(ctx->request);
-        if (pb_decode_ex(&input, method->request_fields, ctx->request, PB_DECODE_NULLTERMINATED)){
+        if (pb_decode(&input, method->request_fields, ctx->request)){
           method->response_fillWithZeros(ctx->response);
           status = method->callback(ctx);
 

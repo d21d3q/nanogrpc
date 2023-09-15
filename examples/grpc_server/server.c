@@ -29,8 +29,8 @@
 
 ng_grpc_handle_t hGrpc;
 
-Chunk requestChunk_holder;
-Chunk responseChunk_holder;
+uint8_t globalRequest_holder[4200];
+uint8_t globalResponse_holder[4200];
 
 pb_istream_t istream;
 pb_ostream_t ostream;
@@ -102,8 +102,8 @@ void myGrpcInit()
 {
   Transfer_service_init();
   /* ng_setMethodHandler(&SayHello_method, &Greeter_methodHandler);*/
-  context.request = (void *)&requestChunk_holder;
-  context.response = (void *)&responseChunk_holder;
+  context.request = (void *)&globalRequest_holder;
+  context.response = (void *)&globalResponse_holder;
   ng_setMethodContext(&Transfer_Write_method, &context);
   ng_setMethodCallback(&Transfer_Write_method, (void *)&Transfer_Write_methodCallback);
   ng_GrpcRegisterService(&hGrpc, &Transfer_service);
