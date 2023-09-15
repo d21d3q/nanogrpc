@@ -22,6 +22,7 @@
 
 #include "ng_server.h"
 #include "fileproto.pb.h"
+#include "commands.pb.h"
 #include "common.h"
 
 #define MAX_CHUNK_SIZE 4096
@@ -39,74 +40,141 @@ ng_methodContext_t context;
 uint32_t currentSessionId = 0;
 uint32_t currentTransferringResource = 0;
 
+uint32_t resourceIds[2] = {0xAA, 0xBB};
+
 uint8_t chunkBuffer[MAX_CHUNK_SIZE];
 uint8_t fileBuffer[MAX_CHUNK_SIZE * 4];
-
-
-bool Transfer_Write_data_callback(pb_istream_t *stream, const pb_field_t *field, void **arg)
-{
-  if (stream->bytes_left > MAX_CHUNK_SIZE) {
-    return false;
-  }
-
-  pb_read(stream, chunkBuffer, stream->bytes_left);
-  return true;
-}
 
 ng_CallbackStatus_t Transfer_Write_methodCallback(ng_methodContext_t *context)
 {
   Chunk *request = (Chunk *)context->request;
   Chunk *response = (Chunk *)context->response;
 
-  if (request->type == Chunk_Type_START) {
+  switch (request->type) {
+    case Chunk_Type_START: {
+      /* If the client is requesting a new session, but haven't specified a
+      * session ID, we should fail.
+      */
+      if (!request->has_desired_session_id) {
+        return CallbackStatus_Failed;
+      }
 
-    /* If the client is requesting a new session, but haven't specified a
-     * session ID, we should fail.
-     */
-    if (!request->has_desired_session_id) {
-      return CallbackStatus_Failed;
+      /* Check if the resource is available */
+      if (request->has_resource_id) {
+        bool found = false;
+        int i;
+        for (i = 0; i < sizeof(resourceIds); i++) {
+          if (resourceIds[i] == request->resource_id) {
+            found = true;
+            break;
+          }
+        }
+
+        if (!found) {
+          return CallbackStatus_Failed;
+        }
+      }
+
+      response->type = Chunk_Type_START_ACK;
+      response->has_session_id = true;
+      response->session_id = request->desired_session_id;
+      response->offset = 0;
+      response->window_end_offset = MAX_CHUNK_SIZE;
+      response->has_max_chunk_size_bytes = true;
+      response->max_chunk_size_bytes = MAX_CHUNK_SIZE;
+      response->has_min_delay_microseconds = true;
+      response->min_delay_microseconds = MIN_DELAY_MICROSECONDS;
+
+      currentSessionId = response->session_id;
+
+      break;
     }
 
-    response->type = Chunk_Type_START_ACK;
-    response->has_session_id = true;
-    response->session_id = request->desired_session_id;
-    response->offset = 0;
-    response->window_end_offset = MAX_CHUNK_SIZE;
-    response->has_max_chunk_size_bytes = true;
-    response->max_chunk_size_bytes = MAX_CHUNK_SIZE;
-    response->has_min_delay_microseconds = true;
-    response->min_delay_microseconds = MIN_DELAY_MICROSECONDS;
+    case Chunk_Type_DATA: {
+      if (request->session_id != currentSessionId) {
+        return CallbackStatus_Failed;
+      }
 
-    currentSessionId = response->session_id;
-  } else if (request->type == Chunk_Type_DATA) {
+      /* Copy data from the chunk buffer to the file buffer. */
+      printf("offset: %llu size: %d", request->offset, request->data.size);
+      memcpy(fileBuffer + request->offset, request->data.bytes, request->data.size);
 
-    if (request->session_id != currentSessionId) {
-      return CallbackStatus_Failed;
+      response->type = Chunk_Type_PARAMETERS_CONTINUE;
+      response->has_session_id = true;
+      response->session_id = request->session_id;
+      response->offset = request->offset + MAX_CHUNK_SIZE;
+      response->window_end_offset = response->offset + MAX_CHUNK_SIZE;
+
+      break;
     }
 
-    /* Copy data from the chunk buffer to the file buffer. */
-    printf("offset: %llu size: %d", request->offset, request->data.size);
-    memcpy(fileBuffer + request->offset, request->data.bytes, request->data.size);
+    case Chunk_Type_COMPLETION: {
+      if (request->session_id != currentSessionId) {
+        return CallbackStatus_Failed;
+      }
 
-    response->type = Chunk_Type_PARAMETERS_CONTINUE;
-    response->has_session_id = true;
-    response->session_id = request->session_id;
-    response->offset = request->offset + MAX_CHUNK_SIZE;
-    response->window_end_offset = response->offset + MAX_CHUNK_SIZE;
+      response->type = Chunk_Type_COMPLETION_ACK;
+      response->session_id = request->session_id;
+      response->status = GrpcStatus_OK;
+
+      break;
+    }
+    case Chunk_Type_PARAMETERS_RETRANSMIT:
+    case Chunk_Type_PARAMETERS_CONTINUE:
+    case Chunk_Type_COMPLETION_ACK:
+    case Chunk_Type_START_ACK:
+    case Chunk_Type_START_ACK_CONFIRMATION:
+    default: {
+      /* TODO: Implement some of these? */
+      return CallbackStatus_Failed;
+    }
   }
 
   return CallbackStatus_Ok;
 };
 
-void myGrpcInit()
+ng_CallbackStatus_t Commands_SayHello_methodCallback(ng_methodContext_t *context)
+{
+  HelloRequest *request = (HelloRequest *)context->request;
+  HelloReply *response = (HelloReply *)context->response;
+
+  memcpy(response->message, request->name, strlen(request->name));
+
+  return CallbackStatus_Ok;
+};
+
+static void transfer_service_setup(ng_grpc_handle_t *grpc_handle, ng_methodContext_t *context) 
 {
   Transfer_service_init();
+
+  /* Setup transfer write  */
+  ng_setMethodContext(&Transfer_Write_method, context);
+  ng_setMethodCallback(&Transfer_Write_method, (void *)&Transfer_Write_methodCallback);
+
+  ng_GrpcRegisterService(grpc_handle, &Transfer_service);
+}
+
+static void commands_service_setup(ng_grpc_handle_t *grpc_handle, ng_methodContext_t *context)
+{
+  Commands_service_init();
+
+  /* Setup transfer write  */
+  ng_setMethodContext(&Commands_SayHello_method, context);
+  ng_setMethodCallback(&Commands_SayHello_method, (void *)&Commands_SayHello_methodCallback);
+
+  ng_GrpcRegisterService(grpc_handle, &Commands_service);
+}
+
+void myGrpcInit()
+{
+  
   /* ng_setMethodHandler(&SayHello_method, &Greeter_methodHandler);*/
   context.request = (void *)&globalRequest_holder;
   context.response = (void *)&globalResponse_holder;
-  ng_setMethodContext(&Transfer_Write_method, &context);
-  ng_setMethodCallback(&Transfer_Write_method, (void *)&Transfer_Write_methodCallback);
-  ng_GrpcRegisterService(&hGrpc, &Transfer_service);
+
+  transfer_service_setup(&hGrpc, &context);
+  commands_service_setup(&hGrpc, &context);
+
   hGrpc.input = &istream;
   hGrpc.output = &ostream;
 }

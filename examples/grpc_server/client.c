@@ -78,6 +78,14 @@ void setupTransferStart(Chunk *chunk) {
     chunk->desired_session_id = 4455;
 }
 
+void setupTransferComplete(Chunk *chunk, uint32_t session_id) {
+    chunk->type = Chunk_Type_COMPLETION;
+    chunk->session_id = session_id;
+    chunk->has_session_id = true;
+    chunk->remaining_bytes = 0;
+    chunk->data.size = 0;
+}
+
 bool sendFile(int fd, char *path) {
     RpcPacketRequest_CS gRequest = RpcPacketRequest_CS_init_zero;
     RpcPacketResponse_CS gResponse = RpcPacketResponse_CS_init_zero;
@@ -171,6 +179,28 @@ bool sendFile(int fd, char *path) {
         currentPointer = responseChunk_holder.offset;
     }
 
+    setupTransferComplete(&requestChunk_holder, responseChunk_holder.session_id);
+
+    /* Encode the completion request. It is written to the socket immediately
+    * through our custom stream. */
+    if (!pb_encode_ex(&output, RpcPacketRequest_CS_fields, &gRequest, PB_ENCODE_NULLTERMINATED))
+    {
+        fprintf(stderr, "Encoding failed: %s\n", PB_GET_ERROR(&output));
+        return false;
+    }
+
+    /* Receive response to completion request */
+    istream.bytes_left = SIZE_MAX;
+    bool didDecodePackage = pb_decode_ex(&istream, RpcPacketResponse_CS_fields, &gResponse, PB_ENCODE_NULLTERMINATED);
+    input = pb_istream_from_buffer(gResponse.payload->bytes, gResponse.payload->size);
+    bool didDecodePayload = pb_decode(&input, Chunk_fields, &responseChunk_holder);
+
+    printf("didDecodePackage: %d didDecodePayload: %d\n", didDecodePackage, didDecodePayload);
+
+    if (responseChunk_holder.type != Chunk_Type_COMPLETION_ACK) {
+        fprintf(stderr, "Invalid response type\n");
+        return false;
+    }
 
     return true;
 }
