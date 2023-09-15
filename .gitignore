@@ -36,3 +36,6 @@ nanogrpc/examples/network_server/server
 # Node client ignores
 node_modules
 yarn-error.log
+
+# Generated typescript files
+typescript/generated
