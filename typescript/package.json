@@ -6,8 +6,8 @@
   "author": "David Alexander Bjerremose <dab@davidbjerremose.com>",
   "license": "MIT",
   "scripts": {
-    "proto:generate:js": "npx pbjs -w commonjs -t static-module -o ./generated/nanogrpc.js --es6 ../nanogrpc.proto",
-    "proto:generate:ts": "npx pbts -o ./generated/nanogrpc.d.ts ./generated/nanogrpc.js",
+    "proto:generate:js": "npx pbjs -w commonjs -t static-module -o ./generated/grpc.js --es6 ../nanogrpc.proto ../examples/grpc_server/fileproto.proto",
+    "proto:generate:ts": "npx pbts -o ./generated/grpc.d.ts ./generated/grpc.js",
     "proto:generate": "npm run proto:generate:js && npm run proto:generate:ts",
     "test": "jest"
   },
