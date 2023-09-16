@@ -1,16 +1,35 @@
-import { RpcPacketRequest, RpcPacketResponse, GrpcStatus } from '../generated/nanogrpc';
+import { RpcPacketRequest, RpcPacketResponse, GrpcStatus } from '../generated/grpc';
 import { hashCode } from './hash';
 
-export const createRPCRequest = (methodName: string, rpcRequest: Uint8Array, callId: number): Uint8Array => {
+export interface RPCRequestParameters {
+    methodName: string;
+    rpcRequest: Uint8Array;
+    callId: number;
+    serviceName?: string;
+    channelId?: number;
+}
+
+export const createRPCRequest = (parameters: RPCRequestParameters): Uint8Array => {
+
+    const {
+        callId,
+        methodName,
+        rpcRequest,
+        serviceName,
+        channelId
+    } = parameters;
+
     const request = RpcPacketRequest.create({
         callId,
         methodId: hashCode(methodName),
         payload: rpcRequest,
+        serviceId: hashCode(serviceName),
+        channelId,
     });
-    return RpcPacketRequest.encodeDelimited(request).finish();
+    return RpcPacketRequest.encode(request).finish();
 }
 
 export const parseRPCResponse = (rpcResponse: Uint8Array) => {
-    const parsedResponse = RpcPacketResponse.decodeDelimited(rpcResponse);
+    const parsedResponse = RpcPacketResponse.decode(rpcResponse);
     return parsedResponse;
 }

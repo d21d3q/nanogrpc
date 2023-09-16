@@ -1,34 +1,36 @@
 import { RPCImpl } from "protobufjs";
 import * as grpc from './generated/grpc';
-import { createTransferService } from "./client";
+import { createRPCImplementation } from "./client";
 
 
 describe('client', () => {
   describe('transfer service', () => {
     it('should be able to transfer a buffer correctly', async () => {
 
-      let requestData;
-      let requestMethod;
+      let reqPayload;
+      let reqMethod;
 
-      const testImplementation: RPCImpl = (method, reqData, callback) => {
-          requestData = reqData;
-          requestMethod = method.name;
-          const response = new grpc.Chunk({  });
-          const rawResponseData = grpc.Chunk.encode(response).finish();
-          callback(null, rawResponseData);
-      };
+      const testAdapter = {
+        write: async (data) => {
 
-      const transferService = createTransferService(testImplementation);
+          const request = grpc.RpcPacketRequest.decode(data);
 
-      const testChunk = new grpc.Chunk({
-          data: Buffer.from([0x01, 0x02, 0x03]),
-          offset: 0,
-      });
+          reqMethod = request.methodId;
+          reqPayload = request.payload;
 
-      const result = await transferService.write(testChunk);
+          const response = new grpc.RpcPacketResponse({
+            type: grpc.PacketType.RESPONSE,
+            callId: request.callId,
+          });
 
+          return grpc.RpcPacketResponse.encode(response).finish();
+        }
+      }
 
-      console.log(result);
+      const testImplementation = createRPCImplementation(testAdapter);
+
+      
+
     });
   });
 })
