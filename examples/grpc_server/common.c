@@ -9,21 +9,16 @@
 
 #include "common.h"
 
-static bool write_callback(pb_ostream_t *stream, const uint8_t *buf, size_t count)
+bool write_callback(pb_ostream_t *stream, const uint8_t *buf, size_t count)
 {
+
     int fd = (intptr_t)stream->state;
     int result = send(fd, buf, count, 0);
-
-    int i;
-    for (i = 0; i < result; i++) {
-        printf("%02x", buf[i]);
-    }
-    printf("\n");
 
     return result == count;
 }
 
-static bool read_callback(pb_istream_t *stream, uint8_t *buf, size_t count)
+bool read_callback(pb_istream_t *stream, uint8_t *buf, size_t count)
 {
     int fd = (intptr_t)stream->state;
     int result;
