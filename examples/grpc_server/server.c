@@ -188,6 +188,9 @@ void handle_connection(int connfd)
   *hGrpc.input = pb_istream_from_socket(connfd);
   *hGrpc.output = pb_ostream_from_socket(connfd);
   ng_GrpcParseBlocking(&hGrpc);
+  uint8_t buf[1] = {0x00};
+  // Mimick a NULL terminating, without having to bake it anywhere else
+  send(connfd, buf, 1, 0);
 }
 
 int main(int argc, char **argv)
