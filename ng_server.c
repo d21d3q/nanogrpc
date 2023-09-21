@@ -140,12 +140,10 @@ bool ng_GrpcParseBlocking(ng_grpc_handle_t *handle){
             } else {
               handle->response.type = PacketType_SERVER_ERROR;
               handle->response.status = GrpcStatus_INTERNAL;
-              printf("Unable to encode method response\n");
               /* TODO insert here message about not being able to
               * encode method request? */
             }
           } else { /* callback failed, we ony encode its status, streaming, non blocking not supported here. */
-            printf("Callback failed! %d\n", status);
             handle->response.type = PacketType_SERVER_ERROR;
             handle->response.status = GrpcStatus_INTERNAL;
           }
@@ -170,7 +168,7 @@ bool ng_GrpcParseBlocking(ng_grpc_handle_t *handle){
     handle->response.type = PacketType_SERVER_ERROR;
     handle->response.status = GrpcStatus_DATA_LOSS;
   }
-  if (!pb_encode_ex(handle->output, RpcPacketResponse_fields, &handle->response, PB_ENCODE_NULLTERMINATED)){
+  if (!pb_encode(handle->output, RpcPacketResponse_fields, &handle->response)){
     /* TODO unable to encode */
     ret = false;
   }
