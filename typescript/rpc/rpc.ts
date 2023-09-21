@@ -23,7 +23,7 @@ export const createRPCRequest = (parameters: RPCRequestParameters): Uint8Array =
         callId,
         methodId: hashCode(methodName),
         payload: rpcRequest,
-        serviceId: hashCode(serviceName),
+        serviceId: serviceName ? hashCode(serviceName) : undefined,
         channelId,
     });
     return RpcPacketRequest.encode(request).finish();
