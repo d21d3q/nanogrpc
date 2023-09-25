@@ -25,6 +25,7 @@
 #include <pb.h>
 
 #include "fileproto.pb.h"
+#include "commands.pb.h"
 #include "ng.h"
 #include "common.h"
 
@@ -34,9 +35,11 @@ DEFINE_FILL_WITH_ZEROS_FUNCTION(RpcPacketResponse_CS) */
 /* This is only for holding methods, etc. It has to be reimplemented
 for client purposes. (temporary) */
 ng_grpc_handle_t hGrpc;
-Chunk requestChunk_holder;
-Chunk responseChunk_holder;
-ng_methodContext_t context;
+
+uint8_t globalRequest_holder[4200];
+uint8_t globalResponse_holder[4200];
+
+ng_methodContext_t globalContext;
 /* pb_istream_t istream;
 pb_ostream_t ostream; */
 
@@ -63,10 +66,14 @@ void dummyCallback(void * a, void *b){
 void myGrpcInit(){
   /* FileServer_service_init(); */
   /* ng_setMethodHandler(&SayHello_method, &Greeter_methodHandler);*/
-  context.request = (void *)&requestChunk_holder;
-  context.response = (void *)&responseChunk_holder;
-  ng_setMethodContext(&Transfer_Write_method, &context);
+  globalContext.request = (void *)&globalRequest_holder;
+  globalContext.response = (void *)&globalResponse_holder;
+
+  ng_setMethodContext(&Transfer_Write_method, &globalContext);
+  ng_setMethodContext(&Commands_SayHello_method, &globalContext);
+
   ng_setMethodCallback(&Transfer_Write_method, (void *)&dummyCallback);
+  ng_setMethodCallback(&Commands_SayHello_method, (void *)&dummyCallback);
   /* ng_GrpcRegisterService(&hGrpc, &FileServer_service); */
   /* hGrpc.input = &istream;
   hGrpc.output = &ostream; */
@@ -86,9 +93,25 @@ void setupTransferComplete(Chunk *chunk, uint32_t session_id) {
     chunk->data.size = 0;
 }
 
+bool setupRequestResponse(RpcPacketRequest_CS *request, ng_encodeMessageCallbackArgument_t *arg, ng_method_t *method) 
+{
+    /* General request setup */
+    request->type = PacketType_REQUEST;
+    request->method_id = method->method_hash;
+    request->payload.funcs.encode = &encodeRequestCallback;
+    arg->method = method;
+    arg->context = &globalContext;
+    request->payload.arg = arg;
+
+    return true;
+}
+
 bool sendFile(int fd, char *path) {
-    RpcPacketRequest_CS gRequest = RpcPacketRequest_CS_init_zero;
-    RpcPacketResponse_CS gResponse = RpcPacketResponse_CS_init_zero;
+    RpcPacketRequest_CS fileRequest = RpcPacketRequest_CS_init_zero;
+    RpcPacketResponse_CS fileResponse = RpcPacketResponse_CS_init_zero;
+    Chunk *requestChunk_holder = (Chunk * )globalContext.request;
+    Chunk *responseChunk_holder = (Chunk * )globalContext.response;
+    ng_encodeMessageCallbackArgument_t arg;
     bool validRequest;
     size_t requestSize;
 
@@ -96,26 +119,20 @@ bool sendFile(int fd, char *path) {
     pb_ostream_t output = pb_ostream_from_socket(fd);
 
     /* General request setup */
-    gRequest.type = PacketType_REQUEST;
-    gRequest.method_id = 3165279579;
-    gRequest.payload.funcs.encode = &encodeRequestCallback;
-    ng_encodeMessageCallbackArgument_t arg;
-    arg.method = &Transfer_Write_method;
-    arg.context = &context;
-    gRequest.payload.arg = &arg;
+    setupRequestResponse(&fileRequest, &arg, &Transfer_Write_method);
 
-    validRequest = pb_get_encoded_size(&requestSize, RpcPacketRequest_CS_fields, &gRequest);
+    validRequest = pb_get_encoded_size(&requestSize, RpcPacketRequest_CS_fields, &fileRequest);
 
     if (!validRequest) {
         printf("Invalid request\n");
         return false;
     }
 
-    setupTransferStart(context.request);
+    setupTransferStart(globalContext.request);
 
     /* Encode the request. It is written to the socket immediately
         * through our custom stream. */
-    if (!pb_encode_ex(&output, RpcPacketRequest_CS_fields, &gRequest, PB_ENCODE_NULLTERMINATED))
+    if (!pb_encode_ex(&output, RpcPacketRequest_CS_fields, &fileRequest, PB_ENCODE_NULLTERMINATED))
     {
         fprintf(stderr, "Encoding failed: %s\n", PB_GET_ERROR(&output));
         return false;
@@ -124,29 +141,28 @@ bool sendFile(int fd, char *path) {
     pb_istream_t istream = pb_istream_from_socket(fd);
 
     /* Receive response */
-    if (!pb_decode_ex(&istream, RpcPacketResponse_CS_fields, &gResponse, PB_ENCODE_NULLTERMINATED)) {
+    if (!pb_decode_ex(&istream, RpcPacketResponse_CS_fields, &fileResponse, PB_ENCODE_NULLTERMINATED)) {
         printf("Error: %s\n", PB_GET_ERROR(&istream));
         return false;
     }
 
-    if (gResponse.payload == NULL){
+    if (fileResponse.payload == NULL){
         fprintf(stderr, "no data\n");
-        /*fprintf(stderr, "status: %d", gResponse.grpc_status);*/
-        pb_release(RpcPacketResponse_CS_fields, &gResponse);
+        /*fprintf(stderr, "status: %d", fileResponse.grpc_status);*/
+        pb_release(RpcPacketResponse_CS_fields, &fileResponse);
         return false;
     }
 
-    pb_istream_t input = pb_istream_from_buffer(gResponse.payload->bytes, gResponse.payload->size);
+    pb_istream_t input = pb_istream_from_buffer(fileResponse.payload->bytes, fileResponse.payload->size);
 
-    if (!pb_decode(&input, Chunk_fields, &responseChunk_holder))
+    if (!pb_decode(&input, Chunk_fields, responseChunk_holder))
     {
         fprintf(stderr, "Decode response failed: %s\n", PB_GET_ERROR(&input));
-        pb_release(RpcPacketResponse_CS_fields, &gResponse);
+        pb_release(RpcPacketResponse_CS_fields, &fileResponse);
         return false;
     }
-    /* pb_release(RpcPacketResponse_CS_fields, &gResponse); */
 
-    if (responseChunk_holder.type != Chunk_Type_START_ACK) {
+    if (responseChunk_holder->type != Chunk_Type_START_ACK) {
         fprintf(stderr, "Invalid response type\n");
         return false;
     }
@@ -155,35 +171,35 @@ bool sendFile(int fd, char *path) {
 
     int i;
     for (i = 0; i < 4; i++) {
-        requestChunk_holder.type = Chunk_Type_DATA;
-        requestChunk_holder.offset = responseChunk_holder.offset;
+        requestChunk_holder->type = Chunk_Type_DATA;
+        requestChunk_holder->offset = responseChunk_holder->offset;
         
-        memset(requestChunk_holder.data.bytes, 0xAA + currentPointer / 4096, 4096);
-        requestChunk_holder.data.size = 4096;
-        requestChunk_holder.has_session_id = true;
-        requestChunk_holder.session_id = responseChunk_holder.session_id;
+        memset(requestChunk_holder->data.bytes, 0xAA + currentPointer / 4096, 4096);
+        requestChunk_holder->data.size = 4096;
+        requestChunk_holder->has_session_id = true;
+        requestChunk_holder->session_id = responseChunk_holder->session_id;
 
-        pb_encode_ex(&output, RpcPacketRequest_CS_fields, &gRequest, PB_ENCODE_NULLTERMINATED);
+        pb_encode_ex(&output, RpcPacketRequest_CS_fields, &fileRequest, PB_ENCODE_NULLTERMINATED);
 
         istream.bytes_left = SIZE_MAX;
 
-        bool didDecodePackage = pb_decode_ex(&istream, RpcPacketResponse_CS_fields, &gResponse, PB_ENCODE_NULLTERMINATED);
+        bool didDecodePackage = pb_decode_ex(&istream, RpcPacketResponse_CS_fields, &fileResponse, PB_ENCODE_NULLTERMINATED);
 
-        input = pb_istream_from_buffer(gResponse.payload->bytes, gResponse.payload->size);
+        input = pb_istream_from_buffer(fileResponse.payload->bytes, fileResponse.payload->size);
 
-        bool didDecodePayload = pb_decode(&input, Chunk_fields, &responseChunk_holder);
+        bool didDecodePayload = pb_decode(&input, Chunk_fields, responseChunk_holder);
 
         printf("didDecodePackage: %d didDecodePayload: %d\n", didDecodePackage, didDecodePayload);
         
-        printf("offset: %llu\n", responseChunk_holder.offset);
-        currentPointer = responseChunk_holder.offset;
+        printf("offset: %llu\n", responseChunk_holder->offset);
+        currentPointer = responseChunk_holder->offset;
     }
 
-    setupTransferComplete(&requestChunk_holder, responseChunk_holder.session_id);
+    setupTransferComplete(requestChunk_holder, responseChunk_holder->session_id);
 
     /* Encode the completion request. It is written to the socket immediately
     * through our custom stream. */
-    if (!pb_encode_ex(&output, RpcPacketRequest_CS_fields, &gRequest, PB_ENCODE_NULLTERMINATED))
+    if (!pb_encode_ex(&output, RpcPacketRequest_CS_fields, &fileRequest, PB_ENCODE_NULLTERMINATED))
     {
         fprintf(stderr, "Encoding failed: %s\n", PB_GET_ERROR(&output));
         return false;
@@ -191,16 +207,71 @@ bool sendFile(int fd, char *path) {
 
     /* Receive response to completion request */
     istream.bytes_left = SIZE_MAX;
-    bool didDecodePackage = pb_decode_ex(&istream, RpcPacketResponse_CS_fields, &gResponse, PB_ENCODE_NULLTERMINATED);
-    input = pb_istream_from_buffer(gResponse.payload->bytes, gResponse.payload->size);
-    bool didDecodePayload = pb_decode(&input, Chunk_fields, &responseChunk_holder);
+    bool didDecodePackage = pb_decode_ex(&istream, RpcPacketResponse_CS_fields, &fileResponse, PB_ENCODE_NULLTERMINATED);
+    input = pb_istream_from_buffer(fileResponse.payload->bytes, fileResponse.payload->size);
+    bool didDecodePayload = pb_decode(&input, Chunk_fields, responseChunk_holder);
 
     printf("didDecodePackage: %d didDecodePayload: %d\n", didDecodePackage, didDecodePayload);
 
-    if (responseChunk_holder.type != Chunk_Type_COMPLETION_ACK) {
+    if (responseChunk_holder->type != Chunk_Type_COMPLETION_ACK) {
         fprintf(stderr, "Invalid response type\n");
         return false;
     }
+
+    return true;
+}
+
+bool sayHello(int fd) {
+    RpcPacketRequest_CS rpcRequestPackage = RpcPacketRequest_CS_init_zero;
+    RpcPacketResponse_CS rpcResponsePackage = RpcPacketResponse_CS_init_zero;
+    ng_encodeMessageCallbackArgument_t arg;
+
+    /* Setup streams */
+    pb_ostream_t output = pb_ostream_from_socket(fd);
+
+    setupRequestResponse(&rpcRequestPackage, &arg, &Commands_SayHello_method);
+
+    HelloRequest *helloRequest = (HelloRequest *)globalContext.request;
+    HelloResponse *helloResponse = (HelloResponse *)globalContext.response;
+
+    char name[] = "John";
+
+    memcpy(helloRequest->name, name, strlen(name));
+
+    /* Encode the request. It is written to the socket immediately
+        * through our custom stream. */
+    if (!pb_encode_ex(&output, RpcPacketRequest_CS_fields, &rpcRequestPackage, PB_ENCODE_NULLTERMINATED))
+    {
+        fprintf(stderr, "Encoding failed: %s\n", PB_GET_ERROR(&output));
+        return false;
+    }
+
+    pb_istream_t input = pb_istream_from_socket(fd);
+
+    /* Receive response */
+
+    if (!pb_decode_ex(&input, RpcPacketResponse_CS_fields, &rpcResponsePackage, PB_ENCODE_NULLTERMINATED)) {
+        printf("Error: %s\n", PB_GET_ERROR(&input));
+        return false;
+    }
+
+    if (rpcResponsePackage.payload == NULL){
+        fprintf(stderr, "no data\n");
+        /*fprintf(stderr, "status: %d", fileResponse.grpc_status);*/
+        pb_release(RpcPacketResponse_CS_fields, &rpcResponsePackage);
+        return false;
+    }
+
+    pb_istream_t responseInput = pb_istream_from_buffer(rpcResponsePackage.payload->bytes, rpcResponsePackage.payload->size);
+
+    if (!pb_decode(&responseInput, HelloResponse_fields, helloResponse))
+    {
+        fprintf(stderr, "Decode response failed: %s\n", PB_GET_ERROR(&responseInput));
+        pb_release(RpcPacketResponse_CS_fields, &rpcResponsePackage);
+        return false;
+    }
+
+    printf("response: %s\n", helloResponse->message);
 
     return true;
 }
@@ -233,6 +304,8 @@ int main(int argc, char **argv)
 
     if (!sendFile(sockfd, path))
         return 2;
+
+    sayHello(sockfd);
 
     /* Close connection */
     close(sockfd);

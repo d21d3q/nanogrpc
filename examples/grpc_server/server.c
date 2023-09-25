@@ -35,7 +35,7 @@ uint8_t globalResponse_holder[4200];
 
 pb_istream_t istream;
 pb_ostream_t ostream;
-ng_methodContext_t context;
+ng_methodContext_t globalContext;
 
 uint32_t currentSessionId = 0;
 uint32_t currentTransferringResource = 0;
@@ -136,7 +136,7 @@ ng_CallbackStatus_t Transfer_Write_methodCallback(ng_methodContext_t *context)
 ng_CallbackStatus_t Commands_SayHello_methodCallback(ng_methodContext_t *context)
 {
   HelloRequest *request = (HelloRequest *)context->request;
-  HelloReply *response = (HelloReply *)context->response;
+  HelloResponse *response = (HelloResponse *)context->response;
 
   memcpy(response->message, request->name, strlen(request->name));
 
@@ -169,11 +169,11 @@ void myGrpcInit()
 {
   
   /* ng_setMethodHandler(&SayHello_method, &Greeter_methodHandler);*/
-  context.request = (void *)&globalRequest_holder;
-  context.response = (void *)&globalResponse_holder;
+  globalContext.request = (void *)&globalRequest_holder;
+  globalContext.response = (void *)&globalResponse_holder;
 
-  transfer_service_setup(&hGrpc, &context);
-  commands_service_setup(&hGrpc, &context);
+  transfer_service_setup(&hGrpc, &globalContext);
+  commands_service_setup(&hGrpc, &globalContext);
 
   hGrpc.input = &istream;
   hGrpc.output = &ostream;
@@ -189,7 +189,7 @@ void handle_connection(int connfd)
   *hGrpc.output = pb_ostream_from_socket(connfd);
   ng_GrpcParseBlocking(&hGrpc);
   uint8_t buf[1] = {0x00};
-  // Mimick a NULL terminating, without having to bake it anywhere else
+  /* Mimick a NULL terminating, without having to bake it anywhere else */
   send(connfd, buf, 1, 0);
 }
 

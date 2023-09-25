@@ -1,3 +1,3 @@
-HelloRequest.name             max_length:32
+HelloRequest.name               max_length:32
 
-HelloReply.message         max_length:32
+HelloResponse.message           max_length:32
