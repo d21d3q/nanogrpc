@@ -9,6 +9,7 @@
 
 #include "common.h"
 
+
 bool write_callback(pb_ostream_t *stream, const uint8_t *buf, size_t count)
 {
 

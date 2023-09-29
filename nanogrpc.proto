@@ -3,6 +3,28 @@ syntax = "proto3";
 
 // import 'nanopb.proto';
 
+
+message RpcPacketRequest {
+  PacketType type = 1;
+  uint32 channel_id = 2;
+  fixed32 service_id = 3;
+  fixed32 method_id = 4;
+  bytes payload = 5;
+  uint32 status = 6;
+  uint32 call_id = 7;
+}
+
+message RpcPacketResponse {
+  PacketType type = 1;
+  uint32 channel_id = 2;
+  fixed32 service_id = 3;
+  fixed32 method_id = 4;
+  bytes payload = 5;
+  uint32 status = 6;
+  uint32 call_id = 7;
+}
+
+
 // Enumerate standard gRPC status codes.
 enum GrpcStatus {
   OK = 0;
@@ -59,44 +81,4 @@ enum PacketType {
   // Reserve field numbers for deprecated PacketTypes.
   reserved 3;  // SERVER_STREAM_END (equivalent to RESPONSE now)
   reserved 6;  // CANCEL (replaced by CLIENT_ERROR with status CANCELLED)
-}
-
-message RpcPacketRequest {
-  PacketType type = 1;
-  uint32 channel_id = 2;
-  fixed32 service_id = 3;
-  fixed32 method_id = 4;
-  bytes payload = 5;
-  uint32 status = 6;
-  uint32 call_id = 7;
-}
-
-message RpcPacketResponse {
-  PacketType type = 1;
-  uint32 channel_id = 2;
-  fixed32 service_id = 3;
-  fixed32 method_id = 4;
-  bytes payload = 5;
-  uint32 status = 6;
-  uint32 call_id = 7;
-}
-
-message RpcPacketRequest_CS {
-  PacketType type = 1;
-  uint32 channel_id = 2;
-  fixed32 service_id = 3;
-  fixed32 method_id = 4;
-  bytes payload = 5;
-  uint32 status = 6;
-  uint32 call_id = 7;
-}
-
-message RpcPacketResponse_CS {
-  PacketType type = 1;
-  uint32 channel_id = 2;
-  fixed32 service_id = 3;
-  fixed32 method_id = 4;
-  bytes payload = 5;
-  uint32 status = 6;
-  uint32 call_id = 7;
 }

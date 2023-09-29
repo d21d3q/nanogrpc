@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # kate: replace-tabs on; indent-width 4;
 
 from __future__ import unicode_literals
@@ -1660,7 +1660,10 @@ class Method:
         #                                                         self.output))
 
     def get_declaration(self):
-        result = 'extern ng_method_t {}_method;'.format(self.full_name)
+        result = ''
+        result += 'typedef ng_CallbackStatus_t (*{}_method_callback_t)(ng_methodContext_t *context, {}* request, {}* response);\n'.format(self.full_name, self.input.parts[0], self.output)
+        result += 'bool {}_setMethodCallback({}_method_callback_t callback);\n'.format(self.full_name, self.full_name)
+        result += 'extern ng_method_t {}_method;\n'.format(self.full_name)
         return result
 
     def get_definition(self):
@@ -1700,6 +1703,13 @@ class Method:
         result += '    {NULL, NULL},\n'                     # cleanup
         result += '    NULL,\n'                             # next
         result += '};'
+
+        result += '\n\n'
+
+        # Register method
+        result += 'bool {}_setMethodCallback({}_method_callback_t callback) {{\n'.format(self.full_name, self.full_name)
+        result += '    return ng_setMethodCallbackUnchecked(&{}_method, (ng_MethodCallback_t*)callback);\n'.format(self.full_name)
+        result += '}\n'
         return result
 
 # ---------------------------------------------------------------------------

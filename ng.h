@@ -77,13 +77,15 @@ struct ng_methodContext_s {
   ng_methodContext_t* next;
 };
 
+typedef ng_CallbackStatus_t (*ng_MethodCallback_t)(ng_methodContext_t* ctx, void* request, void* response);
+
 struct ng_method_s {
     const char *name;
     ng_hash_t method_hash;
     /* pointers to method which needs to parse input stream in itself. */
     /*ng_GrpcStatus_t (*handler)(pb_istream_t * input, pb_ostream_t * output); */
     /* callback, if not NULL, then it will be called */
-    ng_CallbackStatus_t (*callback)(ng_methodContext_t* ctx);
+    ng_MethodCallback_t callback;
     /* void* request_holder; */
     ng_methodContext_t* context;
     const void* request_fields;

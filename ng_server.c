@@ -99,66 +99,71 @@ bool ng_GrpcParseBlocking(ng_grpc_handle_t *handle){
   RpcPacketResponse_fillWithZeros(&handle->response);
 
   if (pb_decode(handle->input, RpcPacketRequest_fields, &handle->request)){
-    pb_istream_t input;
-    input = pb_istream_from_buffer(handle->request.payload->bytes, handle->request.payload->size);
+    if (handle->request.payload == NULL) {
+      handle->response.type = PacketType_CLIENT_ERROR;
+      handle->response.status = GrpcStatus_INVALID_ARGUMENT;
+    } else {
+      pb_istream_t input;
+      input = pb_istream_from_buffer(handle->request.payload->bytes, handle->request.payload->size);
 
-    handle->response.call_id = handle->request.call_id;
+      handle->response.call_id = handle->request.call_id;
 
-    /* look for method by hash only if it has been provided */
-    if (handle->request.method_id != 0){
-      method = getMethodByHash(handle, handle->request.method_id);
-    }
+      /* look for method by hash only if it has been provided */
+      if (handle->request.method_id != 0){
+        method = getMethodByHash(handle, handle->request.method_id);
+      }
 
-    if (method != NULL) {
-      if (method->callback != NULL &&
-          ((method->context != NULL) ?
-            (method->context->request && method->context->response):
-            false)
-      ){ /* callback and context found */
-        ctx = method->context;
-        ctx->method = method;
-        method->request_fillWithZeros(ctx->request);
-        if (pb_decode(&input, method->request_fields, ctx->request)){
-          method->response_fillWithZeros(ctx->response);
-          status = method->callback(ctx);
+      if (method != NULL) {
+        if (method->callback != NULL &&
+            ((method->context != NULL) ?
+              (method->context->request && method->context->response):
+              false)
+        ){ /* callback and context found */
+          ctx = method->context;
+          ctx->method = method;
+          method->request_fillWithZeros(ctx->request);
+          if (pb_decode(&input, method->request_fields, ctx->request)){
+            method->response_fillWithZeros(ctx->response);
+            status = method->callback(ctx, ctx->request, ctx->response);
 
-          if (status == CallbackStatus_Ok){
-            bool validResponse = false;
-            size_t responseSize;
-            /* try to encode method response to make sure, that it will be
-            * possible to encode it callback.  */
-            validResponse = pb_get_encoded_size(&responseSize,
-                                                method->response_fields,
-                                                ctx->response);
-            if (validResponse){
-              handle->response.status = GrpcStatus_OK;
-              handle->response.payload.funcs.encode = &encodeResponseCallback;
-              /*ng_encodeMessageCallbackArgument_t arg;
-              arg.method = method;
-              arg.context = ctx;*/
-              handle->response.payload.arg = ctx;
-            } else {
+            if (status == CallbackStatus_Ok){
+              bool validResponse = false;
+              size_t responseSize;
+              /* try to encode method response to make sure, that it will be
+              * possible to encode it callback.  */
+              validResponse = pb_get_encoded_size(&responseSize,
+                                                  method->response_fields,
+                                                  ctx->response);
+              if (validResponse){
+                handle->response.status = GrpcStatus_OK;
+                handle->response.payload.funcs.encode = &encodeResponseCallback;
+                /*ng_encodeMessageCallbackArgument_t arg;
+                arg.method = method;
+                arg.context = ctx;*/
+                handle->response.payload.arg = ctx;
+              } else {
+                handle->response.type = PacketType_SERVER_ERROR;
+                handle->response.status = GrpcStatus_INTERNAL;
+                /* TODO insert here message about not being able to
+                * encode method request? */
+              }
+            } else { /* callback failed, we ony encode its status, streaming, non blocking not supported here. */
               handle->response.type = PacketType_SERVER_ERROR;
               handle->response.status = GrpcStatus_INTERNAL;
-              /* TODO insert here message about not being able to
-              * encode method request? */
             }
-          } else { /* callback failed, we ony encode its status, streaming, non blocking not supported here. */
+          /* ret = GrpcStatus_OK; */
+        } else { /* unable to decode message from request holder */
             handle->response.type = PacketType_SERVER_ERROR;
-            handle->response.status = GrpcStatus_INTERNAL;
+            handle->response.status = GrpcStatus_INVALID_ARGUMENT;
           }
-         /* ret = GrpcStatus_OK; */
-       } else { /* unable to decode message from request holder */
+        } else { /* handler not found or no context */
           handle->response.type = PacketType_SERVER_ERROR;
-          handle->response.status = GrpcStatus_INVALID_ARGUMENT;
+          handle->response.status = GrpcStatus_UNIMPLEMENTED;
         }
-      } else { /* handler not found or no context */
+      } else { /* No method found*/
         handle->response.type = PacketType_SERVER_ERROR;
-        handle->response.status = GrpcStatus_UNIMPLEMENTED;
+        handle->response.status = GrpcStatus_NOT_FOUND;
       }
-    } else { /* No method found*/
-      handle->response.type = PacketType_SERVER_ERROR;
-      handle->response.status = GrpcStatus_NOT_FOUND;
     }
     /* inser handle end */
   } else { /* Unable to decode RpcPacket */
@@ -168,6 +173,7 @@ bool ng_GrpcParseBlocking(ng_grpc_handle_t *handle){
     handle->response.type = PacketType_SERVER_ERROR;
     handle->response.status = GrpcStatus_DATA_LOSS;
   }
+
   if (!pb_encode(handle->output, RpcPacketResponse_fields, &handle->response)){
     /* TODO unable to encode */
     ret = false;
@@ -243,8 +249,7 @@ bool ng_setMethodContext(ng_method_t* method, ng_methodContext_t* ctx){
  * @param  callback pointer to callback
  * @return          true if success, false if not
  */
-bool ng_setMethodCallback(ng_method_t *method,
-		ng_CallbackStatus_t (*callback)(ng_methodContext_t* ctx)){
+bool ng_setMethodCallbackUnchecked(ng_method_t *method, ng_MethodCallback_t callback){
   if (callback != NULL){
     method->callback = callback;
     return true;
@@ -421,7 +426,7 @@ bool ng_GrpcParseNonBlocking(ng_grpc_handle_t* handle){
               ctx->call_id = call_id;
               ctx->channel_id = channel_id;
               method->response_fillWithZeros(ctx->response);
-              status = method->callback(ctx);
+              status = method->callback(ctx, ctx->request, ctx->response);
 
               if (status == CallbackStatus_Ok ||
                   status == CallbackStatus_WillContinueLater){
