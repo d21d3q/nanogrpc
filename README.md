@@ -36,9 +36,19 @@ ng_methodContext_t globalContext;
 uint8_t globalRequest_holder[4200];
 uint8_t globalResponse_holder[4200];
 
-// defined elsewhere
-ng_CallbackStatus_t HelloService_Commands_Hello(ng_methodContext_t *context, HelloRequest* request, HelloResponse* response);
-ng_CallbackStatus_t HelloService_Commands_GoodBye(ng_methodContext_t *context, HelloRequest* request, HelloResponse* response);
+ng_CallbackStatus_t HelloService_Commands_Hello(ng_methodContext_t *context, HelloRequest* request, HelloResponse* response) {
+    memcpy(response->message, request->message, strlen(request->message));
+    memcpy(response->message + strlen(request->message), " to you too!", 13);
+
+    return CallbackStatus_Ok;
+}
+
+ng_CallbackStatus_t HelloService_Commands_GoodBye(ng_methodContext_t *context, HelloRequest* request, HelloResponse* response) {
+    memcpy(response->message, request->message, strlen(request->message));
+    memcpy(response->message + strlen(request->message), ", goodbye!", 11);
+
+    return CallbackStatus_Ok;
+}
 
 int main() {
     globalContext.request = (void *)&globalRequest_holder;
