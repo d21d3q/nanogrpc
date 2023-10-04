@@ -1,0 +1,28 @@
+{
+  "name": "@soundboks/nanogrpc",
+  "version": "0.0.1",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "repository": "git@github.com:soundboks/nanogrpc.git",
+  "author": "SOUNDBOKS <github@soundboks.com>",
+  "license": "MIT",
+  "scripts": {
+    "proto:generate:js": "npx pbjs -w commonjs -t static-module -o ./src/generated/nanogrpc.js ../nanogrpc.proto",
+    "proto:generate:ts": "npx pbts -o ./src/generated/nanogrpc.d.ts ./src/generated/nanogrpc.js",
+    "proto:generate": "npm run proto:generate:js && npm run proto:generate:ts",
+    "build": "yarn proto:generate && yarn build:ts",
+    "build:ts": "mkdir -p build/generated && cp -r src/generated/* build/generated/ && yarn tsc",
+    "test": "jest"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.5",
+    "@types/node": "^20.6.1",
+    "jest": "^29.7.0",
+    "protobufjs": "^7.2.3",
+    "protobufjs-cli": "^1.1.1",
+    "typescript": "^5.2.2"
+  },
+  "dependencies": {
+    "@soundboks/timbergeist": "^1.0.0"
+  }
+}
