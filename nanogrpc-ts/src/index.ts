@@ -1,7 +1,7 @@
 
 import * as protobufjs from "protobufjs"
 import { RPCImpl } from 'protobufjs';
-import { PacketType, RpcPacketRequest, RpcPacketResponse } from './generated/nanogrpc';
+import { GrpcStatus, PacketType, RpcPacketRequest, RpcPacketResponse } from './generated/nanogrpc';
 import { RPCError } from './rpc/errors';
 import { crc32 } from "./crc32";
 
@@ -17,7 +17,7 @@ export interface RPCTransportAdapter {
    * @param request Request
    * @returns Response
    */
-  sendMessage: (request: RpcPacketRequest) => Promise<RpcPacketResponse>;
+  send: (request: RpcPacketRequest) => Promise<RpcPacketResponse>;
 }
 
 type Constructor<K> = { new(rpcImpl: RPCImpl, requestDelimited?: boolean, responseDelimited?: boolean): K };
@@ -54,14 +54,14 @@ export const createRPCServiceFactory = (transportAdapter: RPCTransportAdapter) =
           serviceId: crc32(Buffer.from(service.name, "ascii")),
         });
 
-        const response = await transportAdapter.sendMessage(request);
+        const response = await transportAdapter.send(request);
 
-        if (response.type == PacketType.SERVER_ERROR) {
-          const rpcError = new RPCError(response.status);
+        if (response.status !== GrpcStatus.OK) {
+          const rpcError = new RPCError(response.type, response.status);
           callback(rpcError, null);
           return;
         }
-
+        
         callback(null, response.payload);
       })
     }
