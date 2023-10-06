@@ -1,6 +1,6 @@
 {
   "name": "@soundboks/nanogrpc",
-  "version": "0.0.1",
+  "version": "0.1.0-rc.0",
   "main": "build/index.js",
   "types": "build/index.d.ts",
   "repository": "git@github.com:soundboks/nanogrpc.git",
@@ -12,7 +12,10 @@
     "proto:generate": "npm run proto:generate:js && npm run proto:generate:ts",
     "build": "yarn proto:generate && yarn build:ts",
     "build:ts": "mkdir -p build/generated && cp -r src/generated/* build/generated/ && yarn tsc",
-    "test": "jest"
+    "test": "jest",
+    "release": "yarn release:github && yarn release:npm",
+    "release:github": "yarn prerelease && yarn publish --registry=https://npm.pkg.github.com --no-git-tag-version",
+    "release:npm": "yarn prerelease && yarn publish --no-git-tag-version --access public"
   },
   "devDependencies": {
     "@types/jest": "^29.5.5",
@@ -20,9 +23,10 @@
     "jest": "^29.7.0",
     "protobufjs": "^7.2.3",
     "protobufjs-cli": "^1.1.1",
-    "typescript": "^5.2.2"
+    "typescript": "^5.2.2",
+    "@soundboks/timbergeist": "^1.0.0"
   },
-  "dependencies": {
+  "peerDependencies": {
     "@soundboks/timbergeist": "^1.0.0"
   }
 }
